@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+/* =======================================================
+   ATC THEME – STEEL BLACK + GOLD ACCENT
+======================================================= */
+
+:root {
+  /* BASE */
+  --background: #080b0a;
+  --foreground: #f4f6f5;
+
+  /* BRAND */
+  --atc-green: #16ff79;
+  --atc-green-dark: #00cc66;
+  --atc-gold: #ffd54a;
+  --atc-gold-dark: #f5b700;
+
+  /* STEEL NEUTRALS */
+  --atc-gray-900: #0d1110;
+  --atc-gray-800: #141a18;
+  --atc-gray-700: #222b27;
+  --text-muted:#9ca3af;
+
+  /* GLOW */
+  --green-glow:0 0 12px rgba(22,255,121,.4);
+  --gold-glow:0 0 18px rgba(255,213,74,.5);
+}
+
+/* =======================================================
+   GLOBAL BASE
+======================================================= */
+
+body{
+  background:radial-gradient(circle at top,#141a18 0%,#060807 60%);
+  color:var(--foreground);
+  font-family:"Inter","Arial",sans-serif;
+}
+
+/* =======================================================
+   UTILITIES
+======================================================= */
+
+.atc-green { color:var(--atc-green); }
+.atc-gold  { color:var(--atc-gold); }
+.text-muted{ color:var(--text-muted); }
+
+.glow-green{ box-shadow:var(--green-glow); }
+.glow-gold { box-shadow:var(--gold-glow); }
+
+/* =======================================================
+   BUTTON — GOLD + GREEN FUSION
+======================================================= */
+
+.btn-atc-primary{
+  background:linear-gradient(135deg,
+    #00ff88 0%,
+    #ffd700 100%);
+  color:#070707;
+  padding:14px 36px;
+  border-radius:14px;
+  font-weight:800;
+  letter-spacing:.04em;
+  text-decoration:none;
+  transition:all .25s ease;
+  box-shadow:0 0 22px rgba(255,215,0,.35);
+}
+
+.btn-atc-primary:hover{
+  transform:translateY(-3px) scale(1.02);
+  box-shadow:0 0 40px rgba(255,215,0,.55);
+}
+
+/* =======================================================
+   HEADINGS
+======================================================= */
+
+.atc-heading{
+  background:linear-gradient(120deg,
+    var(--atc-green),
+    var(--atc-gold)
+  );
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  font-weight:900;
+}
+
+/* =======================================================
+   CARDS / PANELS
+======================================================= */
+
+.atc-card{
+  background:linear-gradient(135deg,#141a18,#070b09);
+  border-radius:18px;
+  border:1px solid var(--atc-gray-700);
+  padding:24px;
+  transition:.25s ease;
+}
+
+.atc-card:hover{
+  transform:translateY(-3px);
+  border-color:var(--atc-gold);
+}
+
+/* =======================================================
+   FLOAT ANIMATION
+======================================================= */
+
+@keyframes float{
+  0%{transform:translateY(0)}
+  50%{transform:translateY(-4px)}
+  100%{transform:translateY(0)}
+}
+
+.float{ animation:float 5s ease-in-out infinite }
+
+/* =======================================================
+   SCROLLBAR
+======================================================= */
+
+::-webkit-scrollbar{width:10px}
+::-webkit-scrollbar-track{background:var(--atc-gray-900)}
+::-webkit-scrollbar-thumb{
+  background:linear-gradient(var(--atc-green),var(--atc-gold));
+  border-radius:999px;
+}
