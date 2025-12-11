@@ -7,7 +7,7 @@ export default function Privacy() {
         </h1>
 
         <p className="text-gray-300 mb-4">
-          Airtime Coin Ghana (“ATC”) is committed to protecting your privacy and
+          Airtime Coin (“ATC”) is committed to protecting your privacy and
           safeguarding your personal information.
         </p>
 
@@ -55,8 +55,8 @@ export default function Privacy() {
 
         <h2 className="text-xl font-semibold text-green-400 mb-2">Contact</h2>
         <p className="text-gray-300">
-          Email: info@airtimecoinghana.com <br />
-          Location: Accra, Ghana
+          Email: info@airtimecoin.africa <br />
+          Location: Kumasi, Ghana
         </p>
       </div>
     </main>
