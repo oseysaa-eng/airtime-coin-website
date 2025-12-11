@@ -250,8 +250,9 @@ export default function Home() {
       {/* ================= CONTACT ================= */}
       <section id="contact" className="px-8 py-16 text-center">
         <h3 className="text-3xl font-bold mb-2">Contact</h3>
-        <p className="text-gray-300">📧 info@airtimecoinghana.com</p>
-        <p className="text-gray-300">📍 Greater Accra, Ghana</p>
+        <p className="text-gray-300">📧 info@airtimecoin.africa</p>
+        <p className="text-gray-300">📧 support@airtimecoin.africa</p>
+        <p className="text-gray-300">📍 Greater Kumasi, Ghana</p>
       </section>
 
       {/* ================= FOOTER ================= */}

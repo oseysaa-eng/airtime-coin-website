@@ -7,7 +7,7 @@ export default function Terms() {
         </h1>
 
         <p className="text-gray-300 mb-4">
-          By accessing the Airtime Coin Ghana website, you agree to the terms
+          By accessing the Airtime Coin website, you agree to the terms
           outlined below.
         </p>
 
@@ -58,8 +58,8 @@ export default function Terms() {
           Contact
         </h2>
         <p className="text-gray-300">
-          Email: info@airtimecoinghana.com <br />
-          Location: Accra, Ghana
+          Email: info@airtimecoin.africa <br />
+          Location: Kumasi, Ghana
         </p>
       </div>
     </main>
