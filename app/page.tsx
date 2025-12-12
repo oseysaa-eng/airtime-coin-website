@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 
+/* ================= CONSTANTS ================= */
 
-const banners = [
+const BANNERS = [
   "/banners/hero1.png",
   "/banners/hero2.png",
 ];
@@ -11,15 +12,16 @@ const banners = [
 const WAITLIST_FORM =
   "https://docs.google.com/forms/d/e/1FAIpQLSd25k8HaeHdrfIrxS3JJ0p5tadTudox5YJHj8llAjko2iXpdA/viewform?usp=publish-editor";
 
+/* ================= PAGE ================= */
+
 export default function Home() {
   const [currentBanner, setCurrentBanner] = useState(0);
 
-  /* ================= HERO ROTATION ================= */
+  /* HERO BACKGROUND ROTATION */
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentBanner((prev) => (prev + 1) % banners.length);
+      setCurrentBanner((prev) => (prev + 1) % BANNERS.length);
     }, 6000);
-
     return () => clearInterval(timer);
   }, []);
 
@@ -44,25 +46,28 @@ export default function Home() {
         </div>
 
         <nav className="hidden md:flex gap-7 text-gray-300 text-sm">
-          <a href="#about" className="hover:text-white">About</a>
-          <a href="#how" className="hover:text-white">How</a>
-          <a href="#features" className="hover:text-white">Features</a>
-          <a href="#security" className="hover:text-white">Security</a>
-          <a href="#csr" className="hover:text-white">CSR</a>
-          <a href="#faq" className="hover:text-white">FAQ</a>
-          <a href="#waitlist" className="hover:text-white">Waitlist</a>
-          <a href="#contact" className="hover:text-white">Contact</a>
+          {[
+            ["About", "#about"],
+            ["How", "#how"],
+            ["Features", "#features"],
+            ["Security", "#security"],
+            ["CSR", "#csr"],
+            ["Waitlist", "#waitlist"],
+            ["Contact", "#contact"],
+          ].map(([label, link]) => (
+            <a key={label} href={link} className="hover:text-white">
+              {label}
+            </a>
+          ))}
         </nav>
       </header>
 
       {/* ================= HERO ================= */}
       <section className="relative h-[85vh] flex items-center justify-center overflow-hidden">
-
         <div
           className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000"
-          style={{ backgroundImage: `url(${banners[currentBanner]})` }}
+          style={{ backgroundImage: `url(${BANNERS[currentBanner]})` }}
         />
-
         <div className="absolute inset-0 bg-black/75" />
 
         <div className="relative z-10 px-6 text-center max-w-4xl">
@@ -88,7 +93,7 @@ export default function Home() {
               rel="noopener noreferrer"
               className="btn-atc-primary"
             >
-              Join The Waitlist
+              Join Early Access
             </a>
 
             <a
@@ -101,31 +106,27 @@ export default function Home() {
         </div>
       </section>
 
-
       {/* ================= ABOUT ================= */}
       <section id="about" className="bg-gray-950 px-8 py-20">
         <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-10">
-
-          <div className="bg-gray-900 p-8 rounded-xl border border-gray-800">
-            <h2 className="text-2xl font-bold text-green-400 mb-4">Our Mission</h2>
-            <p className="text-gray-300">
-              To empower everyday mobile users by converting airtime activity
-              into tangible financial rewards while supporting communities.
-            </p>
-          </div>
-
-          <div className="bg-gray-900 p-8 rounded-xl border border-gray-800">
-            <h2 className="text-2xl font-bold text-yellow-400 mb-4">Our Vision</h2>
-            <p className="text-gray-300">
-              To build Africa’s leading airtime-backed digital financial
-              ecosystem for economic inclusion.
-            </p>
-          </div>
-
+          {[
+            ["Our Mission", "To empower everyday mobile users by converting airtime activity into tangible financial rewards while supporting communities."],
+            ["Our Vision", "To build Africa’s leading airtime-backed digital financial ecosystem for economic inclusion."],
+          ].map(([title, text]) => (
+            <div
+              key={title}
+              className="bg-gray-900 p-8 rounded-xl border border-gray-800"
+            >
+              <h2 className="text-2xl font-bold text-green-400 mb-4">
+                {title}
+              </h2>
+              <p className="text-gray-300">{text}</p>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* ================= HOW ================= */}
+      {/* ================= HOW IT WORKS ================= */}
       <section id="how" className="px-8 py-20 text-center">
         <h3 className="text-3xl text-yellow-400 font-bold mb-10">
           How ATC Works
@@ -133,10 +134,10 @@ export default function Home() {
 
         <div className="max-w-4xl mx-auto grid md:grid-cols-4 gap-6 text-left">
           {[
-            "Use your phone as usual.",
-            "Airtime converts into ATC.",
-            "Tokens appear in wallet.",
-            "Withdraw, stake or donate."
+            "Use your phone as usual",
+            "Airtime converts into ATC",
+            "Tokens appear in your wallet",
+            "Withdraw, stake, or donate",
           ].map((step, i) => (
             <div
               key={i}
@@ -161,18 +162,16 @@ export default function Home() {
           {[
             ["Frictionless Earnings", "Earn ATC from verified airtime usage."],
             ["MoMo Withdrawals", "Instant mobile money cash-out."],
-            ["CSR Donations", "Support healthcare, disaster relief & youth programs."]
-          ].map(([title, desc], i) => (
+            ["CSR Donations", "Support healthcare, disaster relief & youth programs."],
+          ].map(([title, desc]) => (
             <div
-              key={i}
+              key={title}
               className="bg-gray-900 p-6 rounded-xl border border-gray-800"
             >
               <h4 className="text-green-400 font-semibold mb-2">
                 {title}
               </h4>
-              <p className="text-gray-400">
-                {desc}
-              </p>
+              <p className="text-gray-400">{desc}</p>
             </div>
           ))}
         </div>
@@ -183,70 +182,48 @@ export default function Home() {
         <h3 className="text-3xl text-yellow-400 font-bold mb-6">
           Bank-Grade Security
         </h3>
-
         <p className="max-w-3xl mx-auto text-gray-300">
           Ghana Card KYC and biometric verification operate inside the ATC app.
-          Data is encrypted and protected to global standards.
+          All user data is encrypted and protected to global standards.
         </p>
       </section>
 
-   {/* ================= CSR ================= */}
-<section id="csr" className="bg-gray-950 px-8 py-20 text-center">
-  <h3 className="text-3xl text-yellow-400 font-bold mb-6">
-    Corporate Social Responsibility
-  </h3>
+      {/* ================= CSR ================= */}
+      <section id="csr" className="bg-gray-950 px-8 py-20 text-center">
+        <h3 className="text-3xl text-yellow-400 font-bold mb-6">
+          Corporate Social Responsibility
+        </h3>
 
-  <p className="max-w-3xl mx-auto text-gray-300 leading-relaxed">
-    Airtime Coin is committed to empowering communities across Africa.
-    Our CSR initiatives focus on healthcare support, youth education,
-    emergency disaster relief, and digital financial inclusion.
-  </p>
+        <p className="max-w-3xl mx-auto text-gray-300">
+          Airtime Coin empowers communities through healthcare, youth education,
+          emergency relief, and digital inclusion initiatives.
+        </p>
 
-  <p className="max-w-3xl mx-auto mt-4 text-gray-400">
-    Community contribution and donation tools will be introduced
-    in a future platform phase, allowing users to fund impact projects
-    directly from their ATC wallet.
-  </p>
-
-  <div className="mt-8 inline-block bg-gray-900 border border-gray-700 rounded-xl px-6 py-3 text-yellow-400 font-semibold">
-    🚧 Donations — Coming Soon
-  </div>
-</section>
-
+        <div className="mt-8 inline-block bg-gray-900 border border-gray-700 rounded-xl px-6 py-3 text-yellow-400 font-semibold">
+          🚧 Donations — Coming Soon
+        </div>
+      </section>
 
       {/* ================= WAITLIST ================= */}
-      <section className="text-center py-24">
-  
-  <h1 className="atc-heading text-6xl mb-6">
-    Airtime → Crypto → Cash
-  </h1>
+      <section id="waitlist" className="text-center py-24">
+        <h2 className="atc-heading text-6xl mb-6">
+          Airtime → Crypto → Cash
+        </h2>
 
-  <p className="text-muted max-w-2xl mx-auto mb-8 text-lg">
-    The world’s first platform converting call minutes into real digital assets.
-  </p>
+        <p className="text-muted max-w-2xl mx-auto mb-8 text-lg">
+          The world’s first platform converting call minutes into real digital assets.
+        </p>
 
-  <div className="flex justify-center gap-4 mb-10">
-    <span className="atc-card">🚀 Early Access Opens Soon</span>
-    <span className="atc-card">🎁 Launch Bonuses</span>
-    <span className="atc-card">🔐 Priority Access</span>
-  </div>
+        <a
+          href={WAITLIST_FORM}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-atc-primary glow-gold text-xl"
+        >
+          Join Waitlist
+        </a>
+      </section>
 
-  <a
-    href="https://docs.google.com/forms/d/e/1FAIpQLSd25k8HaeHdrfIrxS3JJ0p5tadTudox5YJHj8llAjko2iXpdA/viewform?usp=publish-editor"
-    className="btn-atc-primary glow-gold text-xl"
-    target="_blank"
-    rel="noopener noreferrer"
-  >
-    Join Waitlist
-  </a>
-  <p className="text-gray-300 mt-6">
-  Interested in partnering on impact projects?
-  <a href="#contact" className="text-green-400 font-semibold ml-2 hover:underline">
-    Contact us →
-  </a>
-</p>
-
-</section>
       {/* ================= CONTACT ================= */}
       <section id="contact" className="px-8 py-16 text-center">
         <h3 className="text-3xl font-bold mb-2">Contact</h3>
@@ -257,20 +234,13 @@ export default function Home() {
 
       {/* ================= FOOTER ================= */}
       <footer className="border-t border-gray-800 text-center py-6 text-gray-500">
-        © {new Date().getFullYear()} Airtime Coin Ghana — All rights reserved.
-
+        © {new Date().getFullYear()} Airtime Coin Africa. All rights reserved.
         <div className="mt-3 space-x-4">
-          <a href="/privacy" className="hover:text-white">
-            Privacy Policy
-          </a>
-          <a href="/terms" className="hover:text-white">
-            Terms & Conditions
-          </a>
+          <a href="/privacy" className="hover:text-white">Privacy Policy</a>
+          <a href="/terms" className="hover:text-white">Terms & Conditions</a>
         </div>
       </footer>
 
     </main>
   );
 }
-
-
