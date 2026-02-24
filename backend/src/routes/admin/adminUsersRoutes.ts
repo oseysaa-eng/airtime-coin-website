@@ -1,255 +1,145 @@
 import express from "express";
+import mongoose from "mongoose";
 import adminAuth from "../../middleware/adminAuth";
-import AdminAuditLog from "../../models/AdminAuditLog";
-import CallSession from "../../models/CallSession";
-import User from "../../models/User";
+import UserDevice from "../../models/UserDevice";
 import UserTrust from "../../models/UserTrust";
-import Wallet from "../../models/Wallet";
 
 const router = express.Router();
 
-/**
- * ======================================================
- * GET /api/admin/users
- * List all users with wallet + trust info
- * ======================================================
- */
-router.get("/", adminAuth, async (_req, res) => {
+/* ======================================================
+   GET ALL DEVICES (ADMIN DASHBOARD)
+====================================================== */
+router.get("/devices", adminAuth, async (_req, res) => {
   try {
-    const users = await User.find().select(
-      "email createdAt pausedUntil pauseReason kycStatus"
-    );
+    const devices = await UserDevice.find()
+      .populate("userId", "email name")
+      .sort({ lastSeen: -1 })
+      .lean();
 
-    const enriched = await Promise.all(
-      users.map(async (u) => {
-        const wallet = await Wallet.findOne({ userId: u._id });
-
-        const trust = await UserTrust.findOneAndUpdate(
-          { userId: u._id },
-          { $setOnInsert: { userId: u._id, score: 100 } },
-          { new: true, upsert: true }
-        );
-
-        return {
-          _id: u._id,
-          email: u.email,
-          createdAt: u.createdAt,
-          pausedUntil: u.pausedUntil,
-          pauseReason: u.pauseReason,
-          kycStatus: u.kycStatus ?? "pending",
-
-          trustScore: trust.score,
-          trustStatus:
-            trust.score < 40
-              ? "blocked"
-              : trust.score < 60
-              ? "limited"
-              : trust.score < 80
-              ? "reduced"
-              : "good",
-
-          totalMinutes: wallet?.totalMinutes ?? 0,
-          balanceATC: wallet?.balanceATC ?? 0,
-        };
-      })
-    );
-
-    res.json(enriched);
+    res.json({ devices });
   } catch (err) {
-    console.error("ADMIN USERS LIST ERROR:", err);
-    res.status(500).json({ message: "Failed to load users" });
+    console.error("ADMIN ALL DEVICES ERROR", err);
+    res.status(500).json({ message: "Failed to fetch devices" });
   }
 });
 
-/**
- * ======================================================
- * POST /api/admin/users/:id/pause
- * Pause a single user
- * ======================================================
- */
-router.post("/:id/pause", adminAuth, async (req, res) => {
-  const { id } = req.params;
-  const { duration, reason } = req.body;
+/* ======================================================
+   GET USER DEVICES
+   GET /api/admin/users/:userId/devices
+====================================================== */
+router.get("/users/:userId/devices", adminAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
 
-  const user = await User.findById(id);
-  if (!user) return res.status(404).json({ message: "User not found" });
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
+    }
 
-  let pausedUntil: Date | null = null;
+    const devices = await UserDevice.find({ userId })
+      .sort({ lastSeen: -1 })
+      .lean();
 
-  if (duration === "24h") {
-    pausedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  } else if (duration === "7d") {
-    pausedUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  } else if (duration === "permanent") {
-    pausedUntil = new Date("2999-01-01");
-  } else {
-    return res.status(400).json({ message: "Invalid duration" });
+    res.json({
+      count: devices.length,
+      devices,
+    });
+  } catch (err) {
+    console.error("ADMIN USER DEVICES ERROR", err);
+    res.status(500).json({
+      message: "Failed to load user devices",
+    });
   }
-
-  user.pausedUntil = pausedUntil;
-  user.pauseReason = reason;
-  await user.save();
-
-  await AdminAuditLog.create({
-    adminId: req.admin._id,
-    action: "USER_PAUSED",
-    meta: {
-      userId: id,
-      duration,
-      reason,
-      pausedUntil,
-    },
-  });
-
-  res.json({ success: true, pausedUntil });
 });
 
-/**
- * ======================================================
- * POST /api/admin/users/:id/unpause
- * ======================================================
- */
-router.post("/:id/unpause", adminAuth, async (req, res) => {
-  const user = await User.findById(req.params.id);
-  if (!user) return res.status(404).json({ message: "User not found" });
+/* ======================================================
+   DEVICE ACTIONS
+====================================================== */
 
-  user.pausedUntil = null;
-  user.pauseReason = undefined;
-  await user.save();
+router.post("/devices/:id/trust", adminAuth, async (req, res) => {
+  try {
+    const device = await UserDevice.findById(req.params.id);
 
-  await AdminAuditLog.create({
-    adminId: req.admin._id,
-    action: "USER_UNPAUSED",
-    meta: { userId: user._id },
-  });
+    if (!device)
+      return res.status(404).json({ message: "Device not found" });
 
-  res.json({ success: true });
-});
+    device.trusted = true;
+    device.flagged = false;
+    device.blocked = false;
+    device.riskScore = 0;
 
-/**
- * ======================================================
- * GET /api/admin/users/:id/fraud-timeline
- * ======================================================
- */
-router.get("/:id/fraud-timeline", adminAuth, async (req, res) => {
-  const { id } = req.params;
+    await device.save();
 
-  const flaggedCalls = await CallSession.find({
-    userId: id,
-    flagged: true,
-  })
-    .select("createdAt durationSeconds")
-    .limit(20)
-    .lean();
-
-  const auditLogs = await AdminAuditLog.find({
-    "meta.userId": id,
-    action: { $in: ["TRUST_UPDATED", "USER_PAUSED", "USER_UNPAUSED"] },
-  })
-    .sort({ createdAt: -1 })
-    .limit(20)
-    .lean();
-
-  const timeline = [
-    ...flaggedCalls.map((c) => ({
-      type: "FLAGGED_CALL",
-      message: `Flagged call (${c.durationSeconds}s)`,
-      createdAt: c.createdAt,
-      severity: "warning",
-    })),
-    ...auditLogs.map((l) => ({
-      type: l.action,
-      message:
-        l.action === "TRUST_UPDATED"
-          ? `Trust score set to ${l.meta?.score}`
-          : l.action === "USER_PAUSED"
-          ? `User paused (${l.meta?.duration})`
-          : "User unpaused",
-      createdAt: l.createdAt,
-      severity:
-        l.action === "USER_PAUSED" ? "critical" : "info",
-    })),
-  ]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() -
-        new Date(a.createdAt).getTime()
-    )
-    .slice(0, 30);
-
-  res.json(timeline);
-});
-
-/**
- * ======================================================
- * POST /api/admin/users/bulk
- * Bulk pause / resume / trust update
- * ======================================================
- */
-router.post("/bulk", adminAuth, async (req, res) => {
-  const { userIds, action, value, duration, reason } = req.body;
-
-  if (!Array.isArray(userIds) || userIds.length === 0) {
-    return res.status(400).json({ message: "No users selected" });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("TRUST DEVICE ERROR", err);
+    res.status(500).json({ message: "Trust failed" });
   }
-
-  const now = Date.now();
-
-  await Promise.all(
-    userIds.map(async (userId: string) => {
-      const user = await User.findById(userId);
-      if (!user) return;
-
-      // 🔒 PAUSE
-      if (action === "PAUSE") {
-        let pausedUntil: Date | null = null;
-
-        if (duration === "24h") pausedUntil = new Date(now + 86400000);
-        if (duration === "7d") pausedUntil = new Date(now + 604800000);
-        if (duration === "permanent") pausedUntil = new Date("2999-01-01");
-
-        user.pausedUntil = pausedUntil;
-        user.pauseReason = reason;
-        await user.save();
-
-        await AdminAuditLog.create({
-          adminId: req.admin._id,
-          action: "USER_PAUSED",
-          meta: { userId, duration, reason },
-        });
-      }
-
-      // ▶ RESUME
-      if (action === "RESUME") {
-        user.pausedUntil = null;
-        user.pauseReason = undefined;
-        await user.save();
-
-        await AdminAuditLog.create({
-          adminId: req.admin._id,
-          action: "USER_UNPAUSED",
-          meta: { userId },
-        });
-      }
-
-      // 🎯 TRUST
-      if (action === "SET_TRUST" && typeof value === "number") {
-        const trust = await UserTrust.findOneAndUpdate(
-          { userId },
-          { score: Math.max(0, Math.min(100, value)) },
-          { upsert: true, new: true }
-        );
-
-        await AdminAuditLog.create({
-          adminId: req.admin._id,
-          action: "TRUST_UPDATED",
-          meta: { userId, score: trust.score, reason },
-        });
-      }
-    })
-  );
-
-  res.json({ success: true });
 });
+
+router.post("/devices/:id/flag", adminAuth, async (req, res) => {
+  try {
+    const device = await UserDevice.findById(req.params.id);
+
+    if (!device)
+      return res.status(404).json({ message: "Device not found" });
+
+    device.flagged = true;
+    device.trusted = false;
+    device.blocked = false;
+    device.riskScore = Math.min(100, device.riskScore + 25);
+
+    await device.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("FLAG DEVICE ERROR", err);
+    res.status(500).json({ message: "Flag failed" });
+  }
+});
+
+router.post("/devices/:id/block", adminAuth, async (req, res) => {
+  try {
+    const device = await UserDevice.findById(req.params.id);
+
+    if (!device)
+      return res.status(404).json({ message: "Device not found" });
+
+    device.blocked = true;
+    device.flagged = true;
+    device.trusted = false;
+    device.riskScore = 100;
+
+    await device.save();
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("BLOCK DEVICE ERROR", err);
+    res.status(500).json({ message: "Block failed" });
+  }
+});
+
+/* ======================================================
+   RESET USER TRUST
+====================================================== */
+router.post(
+  "/users/:userId/trust/reset",
+  adminAuth,
+  async (req, res) => {
+    try {
+      await UserTrust.findOneAndUpdate(
+        { userId: req.params.userId },
+        { score: 100 },
+        { upsert: true }
+      );
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("RESET TRUST ERROR", err);
+      res.status(500).json({ message: "Reset failed" });
+    }
+  }
+);
 
 export default router;
