@@ -8,6 +8,9 @@ import adminFraudRoutes from "./adminFraudRoutes";
 import adminSystemRoutes from "./adminSystemRoutes";
 import adminUsersRoutes from "./adminUsersRoutes";
 import adminUtilityRoutes from "./adminUtilityRoutes";
+import adminDeviceRoutes from "./adminDeviceRoutes";
+
+
 
 
 
@@ -36,5 +39,6 @@ router.use("/audit", adminAuditRoutes);
 
 router.use("/utility", adminUtilityRoutes);
 
+router.use("/devices", adminDeviceRoutes);
 
 export default router;
