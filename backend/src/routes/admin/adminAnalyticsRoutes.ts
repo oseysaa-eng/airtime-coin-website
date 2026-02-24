@@ -8,13 +8,11 @@ import User from "../../models/User";
 import UserTrust from "../../models/UserTrust";
 import Wallet from "../../models/Wallet";
 
-
-
 const router = express.Router();
 
 /**
- * 📊 ADMIN OVERVIEW
- * GET /admin/analytics
+ * 📊 OVERVIEW
+ * GET /api/admin/analytics
  */
 router.get("/", adminAuth, async (_req, res) => {
   const totalUsers = await User.countDocuments();
@@ -61,8 +59,11 @@ router.get("/", adminAuth, async (_req, res) => {
   });
 });
 
-
-router.get("/burn-rate", adminAuth, async (_req, res) => {
+/**
+ * 🔥 BURN RATE
+ * GET /api/admin/analytics/burn
+ */
+router.get("/burn", adminAuth, async (_req, res) => {
   const since = new Date();
   since.setDate(since.getDate() - 30);
 
@@ -75,20 +76,8 @@ router.get("/burn-rate", adminAuth, async (_req, res) => {
     },
     {
       $group: {
-        _id: {
-          source: "$source",
-          day: {
-            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
-          },
-        },
+        _id: "$source",
         totalMinutes: { $sum: "$amount" },
-      },
-    },
-    {
-      $group: {
-        _id: "$_id.source",
-        avgDailyMinutes: { $avg: "$totalMinutes" },
-        totalMinutes: { $sum: "$totalMinutes" },
       },
     },
   ]);
@@ -96,41 +85,31 @@ router.get("/burn-rate", adminAuth, async (_req, res) => {
   const pools = await RewardPool.find();
   const emission = await EmissionState.findOne();
 
-  const emissionMultiplier = emission?.multiplier ?? 1;
   const RATE = 0.0025;
+  const multiplier = emission?.multiplier ?? 1;
 
   const result = burns.map(b => {
     const pool = pools.find(p => p.type === b._id);
 
     const avgDailyATC =
-      (b.avgDailyMinutes || 0) * RATE * emissionMultiplier;
+      (b.totalMinutes / 30) * RATE * multiplier;
 
     const balanceATC = pool?.balanceATC || 0;
 
     return {
       type: b._id,
       balanceATC,
-      avgDailyATC: Number(avgDailyATC.toFixed(6)),
-      totalBurnATC: Number(
-        (b.totalMinutes * RATE * emissionMultiplier).toFixed(6)
-      ),
+      avgDailyATC,
       daysLeft:
         avgDailyATC > 0
           ? Math.floor(balanceATC / avgDailyATC)
           : null,
       paused: pool?.paused ?? true,
-      dailyLimitATC: pool?.dailyLimitATC ?? 0,
-      spentTodayATC: pool?.spentTodayATC ?? 0,
     };
   });
 
   res.json({
-    emission: {
-      phase: emission?.phase ?? 0,
-      multiplier: emissionMultiplier,
-      lastHalvingAt: emission?.lastHalvingAt,
-    },
-    pools: result,
+    burnRate: result,
   });
 });
 
