@@ -10,6 +10,9 @@ import { trustRecoveryJob } from "./src/jobs/trustRecoveryJob";
 import SystemSettings from "./src/models/SystemSettings";
 import { setupSocket } from "./src/sockets/socket";
 import { setupSupportSocket } from "./src/sockets/supportSocket";
+import { registerAdminEmitter } from "./src/utils/adminEmitter";
+
+
 
 /* ───────────────────────── LOAD ENV ───────────────────────── */
 dotenv.config();
@@ -136,6 +139,7 @@ app.set("io", io);
 // Initialize sockets ONCE
 setupSocket(io);
 setupSupportSocket(io);
+registerAdminEmitter(io);
 
 
 /* ───────────────────────── START SERVER ───────────────────────── */
