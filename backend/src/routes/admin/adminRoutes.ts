@@ -12,8 +12,6 @@ import adminDeviceRoutes from "./adminDeviceRoutes";
 
 
 
-
-
 const router = express.Router();
 
 // 🔒 Rate limit ALL admin endpoints

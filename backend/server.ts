@@ -29,16 +29,13 @@ connectDB();
 /* ───────────────────────── ROUTES ───────────────────────── */
 // Admin
 import adminBetaRoutes from "./src/routes/admin/adminBetaRoutes";
-import adminDeviceRoutes from "./src/routes/admin/adminDeviceRoutes";
 import adminEmissionRoutes from "./src/routes/admin/adminEmissionRoutes";
-import adminFraudRoutes from "./src/routes/admin/adminFraudRoutes";
 import adminPriceRoutes from "./src/routes/admin/adminPriceRoutes";
 import adminRoutes from "./src/routes/admin/adminRoutes";
-import adminSystemRoutes from "./src/routes/admin/adminSystemRoutes";
 import adminTreasuryRoutes from "./src/routes/admin/adminTreasuryRoutes";
 import adminUtilityAnalyticsRoutes from "./src/routes/admin/adminUtilityAnalyticsRoutes";
-import adminUtilityRoutes from "./src/routes/admin/adminUtilityRoutes";
 import utilityPricingRoutes from "./src/routes/admin/utilityPricingRoutes";
+
 
 // User
 import adsRoutes from "./src/routes/adsRoutes";
@@ -74,16 +71,14 @@ app.get("/", (_req, res) => {
 /* ───────────────────────── REGISTER ROUTES ───────────────────────── */
 // Admin
 app.use("/api/admin", adminRoutes);
-app.use("/api/admin/system", adminSystemRoutes);
 app.use("/api/admin/beta", adminBetaRoutes);
 app.use("/api/admin/treasury", adminTreasuryRoutes);
-app.use("/api/admin/utility", adminUtilityRoutes);
 app.use("/api/admin/utility/analytics", adminUtilityAnalyticsRoutes);
 app.use("/api/admin/utility/pricing", utilityPricingRoutes);
 app.use("/api/admin/emission", adminEmissionRoutes);
 app.use("/api/admin/price", adminPriceRoutes);
-app.use("/api/admin/device", adminDeviceRoutes);
-app.use("/api/admin/fraud", adminFraudRoutes);
+
+
 
 
 // User
@@ -111,6 +106,8 @@ app.use("/api/stake", stakeRoutes);
 app.use("/api/staking", stakingRoutes);
 app.use("/api/emission", emissionRoutes);
 app.use("/postback", postbackRoutes);
+
+
 
 /* ───────────────────────── GLOBAL ERROR HANDLER ───────────────────────── */
 app.use((err: any, req: any, res: any, _next: any) => {
