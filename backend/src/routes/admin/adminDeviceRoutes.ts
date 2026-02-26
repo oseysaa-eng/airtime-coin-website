@@ -1,116 +1,113 @@
 import express from "express";
-import mongoose from "mongoose";
 import adminAuth from "../../middleware/adminAuth";
 import UserDevice from "../../models/UserDevice";
 import UserTrust from "../../models/UserTrust";
 
 const router = express.Router();
 
-/* ======================================================
-   GET ALL DEVICES
-   GET /api/admin/devices
-====================================================== */
-router.get("/", adminAuth, async (_req, res) => {
+/* SUMMARY */
+router.get("/summary", adminAuth, async (req, res) => {
   try {
-    const devices = await UserDevice.find()
-      .populate("userId", "email name")
-      .sort({ lastSeen: -1 })
-      .lean();
 
-    res.json({ devices });
-  } catch (err) {
-    console.error("ADMIN ALL DEVICES ERROR", err);
-    res.status(500).json({ message: "Failed to fetch devices" });
-  }
-});
+    const total = await UserDevice.countDocuments();
+    const trusted = await UserDevice.countDocuments({ trusted: true });
+    const flagged = await UserDevice.countDocuments({ flagged: true });
+    const blocked = await UserDevice.countDocuments({ blocked: true });
 
-/* ======================================================
-   GET USER DEVICES
-   GET /api/admin/devices/user/:userId
-====================================================== */
-router.get("/user/:userId", adminAuth, async (req, res) => {
-  try {
-    const { userId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ message: "Invalid user ID" });
-    }
-
-    const devices = await UserDevice.find({ userId })
-      .sort({ lastSeen: -1 })
-      .lean();
+    const active = await UserDevice.countDocuments({
+      lastSeen: {
+        $gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      },
+    });
 
     res.json({
-      count: devices.length,
-      devices,
+      total,
+      trusted,
+      flagged,
+      blocked,
+      active,
     });
+
   } catch (err) {
-    console.error("ADMIN USER DEVICES ERROR", err);
+
+    console.error(err);
+
     res.status(500).json({
-      message: "Failed to load user devices",
+      message: "Failed to load device summary",
     });
+
   }
 });
+
+/* GET ALL DEVICES */
+router.get("/", adminAuth, async (req, res) => {
+
+  const devices = await UserDevice.find()
+    .populate("userId", "email")
+    .lean();
+
+  res.json({ devices });
+
+});
+
+/* TRUST */
+router.post("/:id/trust", adminAuth, async (req, res) => {
+
+  await UserDevice.findByIdAndUpdate(req.params.id, {
+    trusted: true,
+    flagged: false,
+    blocked: false,
+    riskScore: 0,
+  });
+
+  res.json({ success: true });
+
+});
+
+/* FLAG */
+router.post("/:id/flag", adminAuth, async (req, res) => {
+
+  await UserDevice.findByIdAndUpdate(req.params.id, {
+    flagged: true,
+    trusted: false,
+  });
+
+  res.json({ success: true });
+
+});
+
+/* BLOCK */
+router.post("/:id/block", adminAuth, async (req, res) => {
+
+  await UserDevice.findByIdAndUpdate(req.params.id, {
+    blocked: true,
+    flagged: true,
+    trusted: false,
+    riskScore: 100,
+  });
+
+  res.json({ success: true });
+
+});
+
+
 
 /* ======================================================
-   DEVICE ACTIONS
+   RESET USER TRUST
 ====================================================== */
 
-router.post("/:id/trust", adminAuth, async (req, res) => {
-  try {
-    const device = await UserDevice.findById(req.params.id);
-    if (!device)
-      return res.status(404).json({ message: "Device not found" });
+router.post(
+  "/users/:userId/trust/reset",
+  adminAuth,
+  async (req, res) => {
+    await UserTrust.findOneAndUpdate(
+      { userId: req.params.userId },
+      { score: 100 },
+      { upsert: true }
+    );
 
-    device.trusted = true;
-    device.flagged = false;
-    device.blocked = false;
-    device.riskScore = 0;
-
-    await device.save();
     res.json({ success: true });
-  } catch (err) {
-    console.error("TRUST DEVICE ERROR", err);
-    res.status(500).json({ message: "Trust failed" });
   }
-});
-
-router.post("/:id/flag", adminAuth, async (req, res) => {
-  try {
-    const device = await UserDevice.findById(req.params.id);
-    if (!device)
-      return res.status(404).json({ message: "Device not found" });
-
-    device.flagged = true;
-    device.trusted = false;
-    device.blocked = false;
-    device.riskScore = Math.min(100, device.riskScore + 25);
-
-    await device.save();
-    res.json({ success: true });
-  } catch (err) {
-    console.error("FLAG DEVICE ERROR", err);
-    res.status(500).json({ message: "Flag failed" });
-  }
-});
-
-router.post("/:id/block", adminAuth, async (req, res) => {
-  try {
-    const device = await UserDevice.findById(req.params.id);
-    if (!device)
-      return res.status(404).json({ message: "Device not found" });
-
-    device.blocked = true;
-    device.flagged = true;
-    device.trusted = false;
-    device.riskScore = 100;
-
-    await device.save();
-    res.json({ success: true });
-  } catch (err) {
-    console.error("BLOCK DEVICE ERROR", err);
-    res.status(500).json({ message: "Block failed" });
-  }
-});
+);
 
 export default router;
