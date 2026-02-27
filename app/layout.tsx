@@ -22,8 +22,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://www.airtimecoin.africa"),
   openGraph: {
     title: "AirtimeCoin Africa",
-    description:
-      "Convert airtime into crypto instantly. The future of telecom finance.",
+    description: "Convert airtime into crypto instantly.",
     url: "https://www.airtimecoin.africa",
     siteName: "AirtimeCoin Africa",
     images: [
@@ -40,8 +39,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "AirtimeCoin Africa",
-    description:
-      "Convert airtime into crypto instantly. The future is here.",
+    description: "Convert airtime into crypto instantly.",
     images: ["/og-image.png"],
   },
   icons: {
@@ -63,14 +61,12 @@ export default function RootLayout({
           src="https://www.googletagmanager.com/gtag/js?id=G-BT18WQWMCB"
           strategy="afterInteractive"
         />
-        <Script id="google-analytics" strategy="afterInteractive">
+        <Script id="ga-init" strategy="afterInteractive">
           {`
             window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
+            function gtag(){window.dataLayer.push(arguments);}
             gtag('js', new Date());
-            gtag('config', 'G-BT18WQWMCB', {
-              page_path: window.location.pathname,
-            });
+            gtag('config', 'G-BT18WQWMCB');
           `}
         </Script>
       </head>
