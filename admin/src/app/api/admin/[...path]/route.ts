@@ -1,84 +1,61 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND = process.env.NEXT_PUBLIC_ADMIN_API_URL!;
+const BACKEND = process.env.NEXT_PUBLIC_ADMIN_API_URL;
 
-/* ======================================================
-   UNIVERSAL HANDLER
-====================================================== */
-
-async function proxy(
-  req: NextRequest,
-  pathSegments: string[]
-) {
-  try {
-    const path = pathSegments.join("/");
-
-    const url =
-      `${BACKEND}/api/admin/${path}` +
-      req.nextUrl.search;
-
-    const res = await fetch(url, {
-      method: req.method,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization:
-          req.headers.get("authorization") || "",
-      },
-      body:
-        req.method !== "GET"
-          ? await req.text()
-          : undefined,
-    });
-
-    const text = await res.text();
-
-    return new Response(text, {
-      status: res.status,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-
-  } catch (err) {
-    console.error("Proxy error:", err);
-
-    return new Response(
-      JSON.stringify({
-        message: "Proxy failed",
-      }),
+async function forward(req: NextRequest, path: string[]) {
+  if (!BACKEND) {
+    return NextResponse.json(
+      { error: "Backend URL not configured" },
       { status: 500 }
     );
   }
-}
 
-/* ======================================================
-   EXPORTS (NEXTJS 15 CORRECT SIGNATURE)
-====================================================== */
+  const url = `${BACKEND}/api/admin/${path.join("/")}`;
+
+  const res = await fetch(url, {
+    method: req.method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: req.headers.get("authorization") || "",
+    },
+    body:
+      req.method === "GET" || req.method === "HEAD"
+        ? undefined
+        : await req.text(),
+  });
+
+  return new NextResponse(await res.text(), {
+    status: res.status,
+    headers: {
+      "Content-Type": res.headers.get("content-type") || "application/json",
+    },
+  });
+}
 
 export async function GET(
   req: NextRequest,
-  { params }: any
+  context: { params: { path: string[] } }
 ) {
-  return proxy(req, params.path);
+  return forward(req, context.params.path);
 }
 
 export async function POST(
   req: NextRequest,
-  { params }: any
+  context: { params: { path: string[] } }
 ) {
-  return proxy(req, params.path);
+  return forward(req, context.params.path);
 }
 
 export async function PUT(
   req: NextRequest,
-  { params }: any
+  context: { params: { path: string[] } }
 ) {
-  return proxy(req, params.path);
+  return forward(req, context.params.path);
 }
 
 export async function DELETE(
   req: NextRequest,
-  { params }: any
+  context: { params: { path: string[] } }
 ) {
-  return proxy(req, params.path);
+  return forward(req, context.params.path);
 }
