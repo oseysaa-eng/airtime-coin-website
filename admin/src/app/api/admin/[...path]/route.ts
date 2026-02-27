@@ -3,23 +3,26 @@ import { NextRequest } from "next/server";
 const BACKEND = process.env.NEXT_PUBLIC_ADMIN_API_URL!;
 
 /* ======================================================
-   PROXY HANDLER
+   UNIVERSAL HANDLER
 ====================================================== */
 
-async function handler(
+async function proxy(
   req: NextRequest,
-  context: { params: { path: string[] } }
+  pathSegments: string[]
 ) {
   try {
-    const path = context.params.path.join("/");
+    const path = pathSegments.join("/");
 
-    const url = `${BACKEND}/api/admin/${path}${req.nextUrl.search}`;
+    const url =
+      `${BACKEND}/api/admin/${path}` +
+      req.nextUrl.search;
 
     const res = await fetch(url, {
       method: req.method,
       headers: {
         "Content-Type": "application/json",
-        Authorization: req.headers.get("authorization") || "",
+        Authorization:
+          req.headers.get("authorization") || "",
       },
       body:
         req.method !== "GET"
@@ -27,9 +30,9 @@ async function handler(
           : undefined,
     });
 
-    const data = await res.text();
+    const text = await res.text();
 
-    return new Response(data, {
+    return new Response(text, {
       status: res.status,
       headers: {
         "Content-Type": "application/json",
@@ -37,7 +40,7 @@ async function handler(
     });
 
   } catch (err) {
-    console.error("Admin proxy error:", err);
+    console.error("Proxy error:", err);
 
     return new Response(
       JSON.stringify({
@@ -49,33 +52,33 @@ async function handler(
 }
 
 /* ======================================================
-   EXPORT METHODS
+   EXPORTS (NEXTJS 15 CORRECT SIGNATURE)
 ====================================================== */
 
 export async function GET(
   req: NextRequest,
-  context: { params: { path: string[] } }
+  { params }: any
 ) {
-  return handler(req, context);
+  return proxy(req, params.path);
 }
 
 export async function POST(
   req: NextRequest,
-  context: { params: { path: string[] } }
+  { params }: any
 ) {
-  return handler(req, context);
+  return proxy(req, params.path);
 }
 
 export async function PUT(
   req: NextRequest,
-  context: { params: { path: string[] } }
+  { params }: any
 ) {
-  return handler(req, context);
+  return proxy(req, params.path);
 }
 
 export async function DELETE(
   req: NextRequest,
-  context: { params: { path: string[] } }
+  { params }: any
 ) {
-  return handler(req, context);
+  return proxy(req, params.path);
 }
