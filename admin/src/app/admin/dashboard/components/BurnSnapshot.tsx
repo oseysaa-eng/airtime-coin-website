@@ -1,85 +1,88 @@
 "use client";
 
-import adminApi from "@/lib/adminApi";
-import { useEffect, useState } from "react";
-
-type BurnRow = {
+type BurnPool = {
   type: string;
-  avgDailyATC: number;
   balanceATC: number;
+  avgDailyATC: number;
   daysLeft: number | null;
 };
 
-export default function BurnSnapshot() {
-  const [rows, setRows] = useState<BurnRow[]>([]);
-  const [loading, setLoading] = useState(true);
+type Props = {
+  data: BurnPool[];
+};
 
-  useEffect(() => {
-    adminApi.get("/analytics").then(res => {
-      const payload = res.data;
+export default function BurnSnapshot({ data }: Props) {
 
-      // ✅ Normalize ALL known backend shapes
-      if (Array.isArray(payload)) {
-        setRows(payload);
-      } else if (Array.isArray(payload?.result)) {
-        setRows(payload.result);
-      } else if (Array.isArray(payload?.data)) {
-        setRows(payload.data);
-      } else {
-        console.warn("Unexpected burn-rate payload:", payload);
-        setRows([]);
-      }
-
-      setLoading(false);
-    });
-  }, []);
-
-  if (loading) {
+  if (!data || data.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow p-5">
-        <h3 className="font-semibold mb-3">Burn Snapshot</h3>
-        <p className="text-sm text-gray-500">Loading burn data…</p>
+      <div className="bg-white rounded-xl border p-6">
+        <h2 className="text-lg font-semibold mb-3">
+          Burn Snapshot
+        </h2>
+
+        <p className="text-sm text-gray-500">
+          No burn data available.
+        </p>
       </div>
     );
   }
 
-  if (rows.length === 0) {
-    return (
-      <div className="bg-white rounded-xl shadow p-5">
-        <h3 className="font-semibold mb-3">Burn Snapshot</h3>
-        <p className="text-sm text-gray-500">No burn data available</p>
-      </div>
-    );
-  }
+  const totalBalance = data.reduce(
+    (sum, pool) => sum + (pool.balanceATC || 0),
+    0
+  );
+
+  const totalDailyBurn = data.reduce(
+    (sum, pool) => sum + (pool.avgDailyATC || 0),
+    0
+  );
+
+  const runway =
+    totalDailyBurn > 0
+      ? Math.floor(totalBalance / totalDailyBurn)
+      : null;
 
   return (
-    <div className="bg-white rounded-xl shadow p-5">
-      <h3 className="font-semibold mb-4">Burn Snapshot</h3>
+    <div className="bg-white rounded-xl border p-6">
+
+      <h2 className="text-lg font-semibold mb-4">
+        Emission Runway
+      </h2>
 
       <div className="space-y-3">
-        {rows.map(row => (
-          <div
-            key={row.type}
-            className="flex justify-between items-center text-sm"
-          >
-            <span className="font-medium">{row.type}</span>
 
-            <span className="text-gray-600">
-              {row.avgDailyATC.toFixed(4)} ATC / day
-            </span>
+        <Stat
+          label="Total Balance"
+          value={totalBalance.toFixed(2) + " ATC"}
+        />
 
-            <span
-              className={`font-semibold ${
-                row.daysLeft !== null && row.daysLeft < 7
-                  ? "text-red-500"
-                  : "text-green-600"
-              }`}
-            >
-              {row.daysLeft !== null ? `${row.daysLeft} days left` : "∞"}
-            </span>
-          </div>
-        ))}
+        <Stat
+          label="Daily Burn"
+          value={totalDailyBurn.toFixed(4) + " ATC"}
+        />
+
+        <Stat
+          label="Runway"
+          value={runway ? runway + " days" : "∞"}
+        />
+
       </div>
+
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex justify-between text-sm">
+      <span className="text-gray-500">{label}</span>
+      <span className="font-semibold">{value}</span>
     </div>
   );
 }
