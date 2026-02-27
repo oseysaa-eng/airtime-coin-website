@@ -41,7 +41,7 @@ export default function UtilityPricingControls() {
         <Field
           label="Base Price"
           value={data.basePrice}
-          onChange={v =>
+          onChange={(v: number) =>
             setData({ ...data, basePrice: v })
           }
         />
@@ -49,7 +49,7 @@ export default function UtilityPricingControls() {
         <Field
           label="Min Price Floor"
           value={data.minPrice}
-          onChange={v =>
+          onChange={(v: number) =>
             setData({ ...data, minPrice: v })
           }
         />
@@ -57,7 +57,7 @@ export default function UtilityPricingControls() {
         <Field
           label="Max Price Cap"
           value={data.maxPrice}
-          onChange={v =>
+        onChange={(v: number) =>
             setData({ ...data, maxPrice: v })
           }
         />
