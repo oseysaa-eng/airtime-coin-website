@@ -1,61 +1,81 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
-const BACKEND = process.env.NEXT_PUBLIC_ADMIN_API_URL;
+const BACKEND = process.env.NEXT_PUBLIC_ADMIN_API_URL!;
 
-async function forward(req: NextRequest, path: string[]) {
-  if (!BACKEND) {
-    return NextResponse.json(
-      { error: "Backend URL not configured" },
+/* ======================================================
+   PROXY HANDLER
+====================================================== */
+
+async function handler(
+  req: NextRequest,
+  context: { params: { path: string[] } }
+) {
+  try {
+    const path = context.params.path.join("/");
+
+    const url = `${BACKEND}/api/admin/${path}${req.nextUrl.search}`;
+
+    const res = await fetch(url, {
+      method: req.method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: req.headers.get("authorization") || "",
+      },
+      body:
+        req.method !== "GET"
+          ? await req.text()
+          : undefined,
+    });
+
+    const data = await res.text();
+
+    return new Response(data, {
+      status: res.status,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+  } catch (err) {
+    console.error("Admin proxy error:", err);
+
+    return new Response(
+      JSON.stringify({
+        message: "Proxy failed",
+      }),
       { status: 500 }
     );
   }
-
-  const url = `${BACKEND}/api/admin/${path.join("/")}`;
-
-  const res = await fetch(url, {
-    method: req.method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: req.headers.get("authorization") || "",
-    },
-    body:
-      req.method === "GET" || req.method === "HEAD"
-        ? undefined
-        : await req.text(),
-  });
-
-  return new NextResponse(await res.text(), {
-    status: res.status,
-    headers: {
-      "Content-Type": res.headers.get("content-type") || "application/json",
-    },
-  });
 }
+
+/* ======================================================
+   EXPORT METHODS
+====================================================== */
 
 export async function GET(
   req: NextRequest,
   context: { params: { path: string[] } }
 ) {
-  return forward(req, context.params.path);
+  return handler(req, context);
 }
 
 export async function POST(
   req: NextRequest,
   context: { params: { path: string[] } }
 ) {
-  return forward(req, context.params.path);
+  return handler(req, context);
 }
 
 export async function PUT(
   req: NextRequest,
   context: { params: { path: string[] } }
 ) {
-  return forward(req, context.params.path);
+  return handler(req, context);
 }
 
 export async function DELETE(
   req: NextRequest,
   context: { params: { path: string[] } }
 ) {
-  return forward(req, context.params.path);
+  return handler(req, context);
 }
