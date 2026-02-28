@@ -1,4 +1,4 @@
-³import bcrypt from "bcryptjs";
+import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
