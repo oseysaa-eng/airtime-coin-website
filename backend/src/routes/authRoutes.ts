@@ -12,10 +12,6 @@ import authMiddleware from "../middleware/authMiddleware";
 
 const router = express.Router();
 
-/* ===============================
-   AUTH ROUTES
-=============================== */
-
 router.post("/register", registerUser);
 
 router.post("/login", loginUser);
