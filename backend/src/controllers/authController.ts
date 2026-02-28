@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 
@@ -12,264 +13,220 @@ import { verifyDevice } from "../services/deviceTrustService";
 import { getReferralCode } from "./referralController";
 
 /* =====================================================
-   📝 REGISTER USER
+   📝 REGISTER USER — ENTERPRISE SAFE
 ===================================================== */
 export const registerUser = async (req: Request, res: Response) => {
+  const session = await mongoose.startSession();
+
   try {
-    const {
-      email,
-      password,
-      name,
-      fullName,
-      referralCode,
-      inviteCode,
-    } = req.body;
+    session.startTransaction();
+
+    /* ================= NORMALIZE INPUT ================= */
+
+    const email = req.body.email?.trim().toLowerCase();
+    const password = req.body.password;
+    const name = req.body.name?.trim();
+    const fullName = req.body.fullName?.trim();
+    const referralCode = req.body.referralCode?.trim() || null;
+    const inviteCode = req.body.inviteCode?.trim() || null;
 
     if (!email || !password) {
+      await session.abortTransaction();
       return res.status(400).json({
         message: "Email and password are required",
       });
     }
 
+    /* ================= SYSTEM SETTINGS ================= */
+
     const settings =
-      (await SystemSettings.findOne()) ||
-      (await SystemSettings.create({}));
+      (await SystemSettings.findOne().session(session)) ||
+      (await SystemSettings.create([{}], { session }).then(r => r[0]));
 
-    /* =====================================================
-       🧪 BETA SYSTEM
-    ===================================================== */
+    /* ================= BETA VALIDATION ================= */
+
+    let inviteDoc: any = null;
+
     if (settings.beta?.active) {
-      const userCount = await User.countDocuments();
 
-      // 🛑 Beta user cap
+      const userCount = await User.countDocuments().session(session);
+
       if (userCount >= settings.beta.maxUsers) {
+        await session.abortTransaction();
         return res.status(403).json({
-          message: "Beta is currently full.",
+          message: "Beta is currently full",
         });
       }
 
-      // 🔐 Invite-only beta
       if (settings.beta.inviteOnly) {
+
         if (!inviteCode) {
+          await session.abortTransaction();
           return res.status(403).json({
-            message: "Invite code required for private beta",
+            message: "Invite code required",
           });
         }
 
-        const codeDoc = await InviteCode.findOne({
+        inviteDoc = await InviteCode.findOne({
           code: inviteCode,
           active: true,
           usedBy: null,
-        });
+        }).session(session);
 
-        if (!codeDoc) {
+        if (!inviteDoc) {
+          await session.abortTransaction();
           return res.status(403).json({
-            message: "Invalid or already used invite code",
+            message: "Invalid invite code",
           });
         }
-
-        // We'll assign after user is created
-        (req as any).inviteDoc = codeDoc;
       }
     }
 
-    /* =====================================================
-       🔐 DUPLICATE CHECK
-    ===================================================== */
-    const exists = await User.findOne({ email });
+    /* ================= DUPLICATE CHECK ================= */
+
+    const exists = await User.findOne({ email }).session(session);
+
     if (exists) {
+      await session.abortTransaction();
       return res.status(409).json({
         message: "User already exists",
       });
     }
 
-    /* =====================================================
-       🔐 HASH PASSWORD
-    ===================================================== */
-    const hash = await bcrypt.hash(password, 10);
+    /* ================= PASSWORD HASH ================= */
+
+    const hash = await bcrypt.hash(password, 12);
+
+    /* ================= USER ID GENERATION ================= */
+
+    const userId = new mongoose.Types.ObjectId().toString();
+
+    /* ================= EARLY ADOPTER ================= */
 
     const kycStart = new Date(
       process.env.KYC_START_DATE || Date.now()
     );
+
     const isEarly = new Date() < kycStart;
 
-    /* =====================================================
-       👤 CREATE USER
-    ===================================================== */
-    const user = await User.create({
-      email,
-      password: hash,
-      name,
-      fullName,
+    /* ================= CREATE USER ================= */
 
-      profile: {
-        avatar: "",
-        phone: "",
-        country: "",
-      },
+    const user = await User.create(
+      [
+        {
+          userId,
 
-      earlyAdopter: isEarly,
-      betaStatus: "approved",
+          email,
+          password: hash,
 
-      referral: {
-        code: Math.random().toString(36).substring(2, 10),
-        referredBy: referralCode || null,
-        referredUsers: [],
-        referralEarnings: 0,
-      },
+          name,
+          fullName,
 
-      donationTotal: 0,
-      donorBadge: "none",
+          /* Wallet Initialization */
+          minutes: 0,
+          atc: 0,
+          rate: 0,
 
-      totalEarnings: 0,
-      totalMinutes: 0,
-      chartData: [],
-      kycStatus: "not_submitted",
-    });
+          /* Push tokens must be ARRAY */
+          pushTokens: [],
 
-    /* =====================================================
-       🎟 MARK INVITE CODE AS USED
-    ===================================================== */
-    if ((req as any).inviteDoc) {
-      const invite = (req as any).inviteDoc;
-      invite.usedBy = user._id;
-      invite.usedAt = new Date();
-      invite.active = false;
-      await invite.save();
+          /* Profile */
+          profile: {
+            avatar: "",
+            phone: "",
+            country: "",
+          },
+
+          /* Beta */
+          earlyAdopter: isEarly,
+          betaStatus: "approved",
+
+          /* Referral */
+          referral: {
+            code: Math.random()
+              .toString(36)
+              .substring(2, 10),
+            referredBy: referralCode,
+            referredUsers: [],
+            referralEarnings: 0,
+          },
+
+          /* Stats */
+          donationTotal: 0,
+          donorBadge: "none",
+
+          totalEarnings: 0,
+          totalMinutes: 0,
+
+          chartData: [],
+
+          kycStatus: "not_submitted",
+        },
+      ],
+      { session }
+    ).then(r => r[0]);
+
+    /* ================= MARK INVITE USED ================= */
+
+    if (inviteDoc) {
+      inviteDoc.usedBy = user._id;
+      inviteDoc.usedAt = new Date();
+      inviteDoc.active = false;
+
+      await inviteDoc.save({ session });
     }
 
-    /* =====================================================
-       🔗 REFERRAL PROCESSING
-    ===================================================== */
+    /* ================= REFERRAL PROCESSING ================= */
+
     if (referralCode) {
-      await getReferralCode(user._id.toString(), referralCode);
+      await getReferralCode(
+        user._id.toString(),
+        referralCode
+      );
     }
 
-    /* =====================================================
-       🔐 ISSUE JWT
-    ===================================================== */
+    /* ================= JWT ================= */
+
     const token = jwt.sign(
-      { id: user._id },
+      {
+        id: user._id,
+        userId: user.userId,
+      },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      {
+        expiresIn: JWT_EXPIRES_IN,
+      }
     );
 
-    res.status(201).json({
+    await session.commitTransaction();
+
+    /* ================= RESPONSE ================= */
+
+    return res.status(201).json({
       message: "Registered successfully",
       token,
-      user,
-    });
-  } catch (err) {
-    console.error("REGISTER ERROR:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-/* =====================================================
-   🔐 LOGIN USER
-===================================================== */
-export const loginUser = async (req: Request, res: Response) => {
-  try {
-    const { email, password, fingerprint } = req.body;
-
-    if (!email || !password || !fingerprint) {
-      return res.status(400).json({
-        message: "Email, password and device fingerprint required",
-      });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ message: "Invalid login" });
-    }
-
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-      return res.status(401).json({ message: "Invalid login" });
-    }
-
-    const device = await verifyDevice({
-      userId: user._id.toString(),
-      fingerprint,
-      deviceName: req.headers["user-agent"] as string,
-      platform: req.headers["x-platform"] as string,
-      ip: req.ip,
-    });
-
-    if (!device.allowed && device.reason !== "NEW_DEVICE") {
-      return res.status(403).json({
-        message: "Login blocked",
-        reason: device.reason,
-      });
-    }
-
-    if (!device.allowed && device.reason === "NEW_DEVICE") {
-      await sendDeviceOTP({
-        userId: user._id.toString(),
+      user: {
+        id: user._id,
+        userId: user.userId,
         email: user.email,
-        fingerprint,
-      });
-
-      return res.status(403).json({
-        message: "New device detected",
-        reason: "OTP_REQUIRED",
-      });
-    }
-
-    const token = jwt.sign(
-      { id: user._id },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
-
-    res.json({
-      token,
-      user,
-      newDevice: device.isNew,
-    });
-  } catch (err) {
-    console.error("LOGIN ERROR:", err);
-    res.status(500).json({ message: "Login failed" });
-  }
-};
-
-/* =====================================================
-   👤 GET CURRENT USER
-===================================================== */
-export const getMe = async (req: any, res: Response) => {
-  try {
-    const user = await User.findById(req.user.id).select("-password");
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    const settings = await SystemSettings.findOne();
-
-    res.json({
-      email: user.email,
-      name: user.name,
-      fullName: user.fullName,
-      earlyAdopter: user.earlyAdopter,
-
-      totalMinutes: user.totalMinutes,
-      balance: user.totalEarnings,
-
-      kycStatus: user.kycStatus,
-      profile: user.profile,
-      donationTotal: user.donationTotal,
-      donorBadge: user.donorBadge,
-      referral: user.referral,
-
-      beta: {
-        status: user.betaStatus,
-        conversionEnabled:
-          !settings?.beta?.active || settings.beta.showConversion,
-        withdrawalEnabled:
-          !settings?.beta?.active || settings.beta.showWithdrawals,
+        name: user.name,
+        fullName: user.fullName,
       },
     });
+
   } catch (err) {
-    console.error("ME ERROR:", err);
-    res.status(500).json({ message: "Server error" });
+
+    await session.abortTransaction();
+
+    console.error("REGISTER ERROR:", err);
+
+    return res.status(500).json({
+      message: "Server error",
+    });
+
+  } finally {
+
+    session.endSession();
+
   }
 };
