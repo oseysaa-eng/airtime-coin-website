@@ -2,11 +2,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios, { AxiosError } from "axios";
 
 /**
- * Base API instance
- * Uses production domain for beta & release
+ * Production backend URL
  */
 const API = axios.create({
-  baseURL: process.env.EXPO_PUBLIC_API_URL || "https://atc-backend-cn4f.onrender.com",
+  baseURL:
+    process.env.EXPO_PUBLIC_API_URL ||
+    "https://atc-backend-cn4f.onrender.com/api",
   timeout: 15000,
   headers: {
     "Content-Type": "application/json",
@@ -14,14 +15,18 @@ const API = axios.create({
 });
 
 /**
- * Attach auth token
+ * Attach auth token automatically
  */
 API.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem("userToken");
+    try {
+      const token = await AsyncStorage.getItem("userToken");
 
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (err) {
+      console.log("Token read error:", err);
     }
 
     return config;
@@ -30,13 +35,13 @@ API.interceptors.request.use(
 );
 
 /**
- * Handle auth errors
+ * Handle session expiration
  */
 API.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<any>) => {
     if (error.response?.status === 401) {
-      console.log("🔐 Session expired — clearing auth");
+      console.log("Session expired");
 
       await AsyncStorage.multiRemove([
         "userToken",

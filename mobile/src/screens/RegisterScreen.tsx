@@ -32,64 +32,92 @@ export default function RegisterScreen({ navigation }: any) {
   // VALIDATION
   // ===============================
   const validateForm = () => {
-    let newErrors: any = {};
 
-    if (!username.trim())
-      newErrors.username = "Username is required";
+  let newErrors: any = {};
 
-    if (!email.trim())
-      newErrors.email = "Email is required";
-    else if (!/\S+@\S+\.\S+/.test(email))
-      newErrors.email = "Invalid email format";
+  if (!username.trim())
+    newErrors.username = "Username required";
 
-    if (!password)
-      newErrors.password = "Password is required";
-    else if (password.length < 6)
-      newErrors.password = "Password must be at least 6 characters";
+  if (!email.trim())
+    newErrors.email = "Email required";
 
-    if (!acceptTerms)
-      newErrors.terms = "You must accept Terms & Privacy";
+  else if (!/\S+@\S+\.\S+/.test(email))
+    newErrors.email = "Invalid email";
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  if (!password)
+    newErrors.password = "Password required";
+
+  else if (password.length < 6)
+    newErrors.password = "Minimum 6 characters";
+
+  if (!referralCode.trim())
+    newErrors.referralCode = "Invite code required";
+
+  if (!acceptTerms)
+    newErrors.terms = "Accept Terms required";
+
+  setErrors(newErrors);
+
+  return Object.keys(newErrors).length === 0;
+};
+
 
   // ===============================
   // REGISTER
   // ===============================
-  const handleRegister = async () => {
-    Keyboard.dismiss();
 
-    if (!validateForm()) return;
 
-    try {
-      setLoading(true);
+const handleRegister = async () => {
+  Keyboard.dismiss();
 
-      const res = await API.post("/auth/register", {
-        name: username,
-        fullName,
-        email,
-        password,
-        referralCode: referralCode || undefined,
-      });
+  if (!validateForm()) return;
 
-      if (!res?.data?.token)
-        throw new Error("Registration failed");
+  try {
+    setLoading(true);
 
-      Alert.alert("Success 🎉", "Account created successfully!");
+    const res = await API.post("/auth/register", {
 
-      navigation.replace("Login");
+      email: email.trim().toLowerCase(),
 
-    } catch (err: any) {
-      Alert.alert(
-        "Registration Error",
-        err?.response?.data?.msg || "Registration failed"
-      );
-      console.log("REGISTER ERROR:", err);
-    } finally {
-      setLoading(false);
+      password,
+
+      name: username.trim(),
+
+      fullName: fullName.trim(),
+
+      referralCode: referralCode || null,
+
+      inviteCode: referralCode || null, // REQUIRED FOR PRIVATE BETA
+
+    });
+
+    if (!res?.data?.token) {
+      throw new Error("Registration failed");
     }
-  };
+
+    Alert.alert(
+      "Success 🎉",
+      "Account created successfully!"
+    );
+
+    navigation.replace("Login");
+
+  } catch (err: any) {
+
+    console.log("REGISTER ERROR:", err?.response?.data);
+
+    Alert.alert(
+      "Registration Failed",
+      err?.response?.data?.message ||
+      err?.response?.data?.msg ||
+      err?.message ||
+      "Unable to create account"
+    );
+
+  } finally {
+    setLoading(false);
+  }
+};
 
   // ===============================
   // UI
@@ -181,15 +209,27 @@ export default function RegisterScreen({ navigation }: any) {
           )}
 
           {/* Referral Code */}
-          <Text style={styles.label}>Referral Code (optional)</Text>
-          <TextInput
-            placeholder="Referral code"
-            placeholderTextColor="#94a3b8"
-            style={styles.input}
-            value={referralCode}
-            onChangeText={setReferralCode}
-          />
+          <Text style={styles.label}>Invite Code</Text>
 
+            <TextInput
+              placeholder="Enter your invite code"
+              placeholderTextColor="#94a3b8"
+              style={[
+                styles.input,
+                errors.referralCode && styles.errorInput
+              ]}
+              value={referralCode}
+              onChangeText={setReferralCode}
+              autoCapitalize="none"
+            />
+
+            {errors.referralCode && (
+              <Text style={styles.error}>
+                {errors.referralCode}
+              </Text>
+            )}
+  
+        
           {/* TERMS */}
           <TouchableOpacity
             style={styles.termsRow}
