@@ -1,11 +1,13 @@
-import mongoose from "mongoose";
+import mongoose, { Schema } from "mongoose";
 
-const InviteCodeSchema = new mongoose.Schema({
+const InviteCodeSchema = new Schema({
 
   code: {
     type: String,
     required: true,
     unique: true,
+    uppercase: true,
+    trim: true,
   },
 
   active: {
@@ -13,21 +15,20 @@ const InviteCodeSchema = new mongoose.Schema({
     default: true,
   },
 
+  createdBy: {
+    type: Schema.Types.ObjectId,
+    ref: "User",
+  },
+
   usedBy: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: Schema.Types.ObjectId,
     ref: "User",
     default: null,
   },
 
-  usedCount: {
-    type: Number,
-    default: 0,
-  },
+  usedAt: Date,
 
-  maxUses: {
-    type: Number,
-    default: 1,
-  },
+  revokedAt: Date,
 
 }, {
   timestamps: true,

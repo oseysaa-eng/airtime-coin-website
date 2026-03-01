@@ -53,27 +53,31 @@ export const registerUser = async (req: Request, res: Response) => {
     /* =============================
        BETA VALIDATION
     ============================= */
+
     if (settings.beta?.active && settings.beta.inviteOnly) {
-      if (!inviteCode) {
-        return res.status(403).json({
-          message: "Invite code required",
-        });
-      }
 
-      const code = await InviteCode.findOne({
-        code: inviteCode,
-        active: true,
-      });
+  if (!inviteCode) {
+    return res.status(403).json({
+      message: "Invite code required",
+    });
+  }
 
-      if (!code) {
-        return res.status(403).json({
-          message: "Invalid invite code",
-        });
-      }
+  const codeDoc = await InviteCode.findOne({
+    code: inviteCode,
+    active: true,
+    usedBy: null,
+  });
 
-      (req as any).inviteDoc = code;
-    }
+  if (!codeDoc) {
+    return res.status(403).json({
+      message: "Invalid or already used invite code",
+    });
+  }
 
+  (req as any).inviteDoc = codeDoc;
+
+  
+}
     /* =============================
        DUPLICATE CHECK
     ============================= */
@@ -98,43 +102,45 @@ export const registerUser = async (req: Request, res: Response) => {
 
     const isEarly = true;
     
-const user = await User.create({
-  userId: new mongoose.Types.ObjectId().toString(),
+    const user = await User.create({
+      userId: new mongoose.Types.ObjectId().toString(),
 
-  email,
-  password: hash,
+      email,
+      password: hash,
 
-  name,
-  fullName,
+      name,
+      fullName,
 
-  referralCode: generateReferralCode(),
+      referralCode: generateReferralCode(),
 
-  referredBy: referralCode || null,
+      referredBy: referralCode || null,
 
-  balance: 0,
-  minutes: 0,
-  atc: 0,
-  rate: 0,
+      balance: 0,
+      minutes: 0,
+      atc: 0,
+      rate: 0,
 
-  totalEarnings: 0,
-  totalMinutes: 0,
+      totalEarnings: 0,
+      totalMinutes: 0,
 
-  pushTokens: [],
+      pushTokens: [],
 
-  earlyAdopter: isEarly,
-});
+      earlyAdopter: isEarly,
+    });
 
-
-
-    
 
     /* =============================
        MARK INVITE USED
     ============================= */
-    if ((req as any).inviteDoc) {
+
+        if ((req as any).inviteDoc) {
+
       const invite = (req as any).inviteDoc;
 
       invite.usedBy = user._id;
+
+      invite.usedAt = new Date();
+
       invite.active = false;
 
       await invite.save();

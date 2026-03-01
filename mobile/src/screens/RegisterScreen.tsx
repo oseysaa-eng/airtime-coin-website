@@ -66,7 +66,6 @@ export default function RegisterScreen({ navigation }: any) {
   // REGISTER
   // ===============================
 
-
 const handleRegister = async () => {
   Keyboard.dismiss();
 
@@ -90,6 +89,7 @@ const handleRegister = async () => {
       inviteCode: referralCode || null, // REQUIRED FOR PRIVATE BETA
 
     });
+    
 
     if (!res?.data?.token) {
       throw new Error("Registration failed");
@@ -118,6 +118,8 @@ const handleRegister = async () => {
     setLoading(false);
   }
 };
+
+
 
   // ===============================
   // UI
