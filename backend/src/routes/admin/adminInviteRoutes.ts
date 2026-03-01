@@ -1,7 +1,8 @@
 import express from "express";
+import crypto from "crypto";
+
 import adminAuth from "../../middleware/adminAuth";
 import InviteCode from "../../models/InviteCode";
-import crypto from "crypto";
 
 const router = express.Router();
 
@@ -18,72 +19,72 @@ router.get("/", adminAuth, async (_req, res) => {
 
 });
 
+
 /**
- * CREATE invite code
+ * CREATE single invite code
  */
 router.post("/", adminAuth, async (req, res) => {
 
-  const { code, maxUses } = req.body;
+  const { code } = req.body;
 
   if (!code)
     return res.status(400).json({
-      message: "Code required"
+      message: "Code required",
     });
 
   const exists = await InviteCode.findOne({ code });
 
   if (exists)
     return res.status(409).json({
-      message: "Code already exists"
+      message: "Code already exists",
     });
 
   const invite = await InviteCode.create({
 
-    code,
-
-    maxUses: maxUses || 1,
+    code: code.toUpperCase(),
 
     active: true,
 
-    usedCount: 0,
+    createdBy: req.user.id,
 
   });
 
   res.json({
-    message: "Invite code created",
-    invite
+    message: "Invite created",
+    invite,
   });
 
 });
 
 
 /**
- * BULK GENERATE INVITES
+ * BULK GENERATE invite codes
  */
-router.post("/generate-bulk", adminAuth, async (req, res) => {
+router.post("/generate", adminAuth, async (req, res) => {
 
-  const count = Number(req.body.count) || 30;
+  const count = Number(req.body.count) || 10;
 
-  if (count > 1000)
+  if (count > 500)
     return res.status(400).json({
-      message: "Max 1000 per batch"
+      message: "Max 500 per request",
     });
 
   const invites = [];
 
   for (let i = 0; i < count; i++) {
 
-    const code =
-      "ATC-" +
-      crypto.randomBytes(4)
-      .toString("hex")
-      .toUpperCase();
-
     invites.push({
-      code,
+
+      code:
+        "ATC-" +
+        crypto.randomBytes(4)
+          .toString("hex")
+          .toUpperCase(),
+
       active: true,
-      usedCount: 0,
-      maxUses: 1
+
+      createdBy: req.user.id,
+
     });
 
   }
@@ -92,23 +93,28 @@ router.post("/generate-bulk", adminAuth, async (req, res) => {
 
   res.json({
     message: `${count} invite codes created`,
-    codes: created
+    codes: created,
   });
 
 });
 
 
 /**
- * DISABLE invite code
+ * Disable invite
  */
 router.post("/:id/disable", adminAuth, async (req, res) => {
 
   await InviteCode.findByIdAndUpdate(
     req.params.id,
-    { active: false }
+    {
+      active: false,
+      revokedAt: new Date(),
+    }
   );
 
-  res.json({ success: true });
+  res.json({
+    message: "Invite disabled",
+  });
 
 });
 
