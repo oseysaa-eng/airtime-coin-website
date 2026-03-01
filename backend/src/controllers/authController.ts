@@ -1,5 +1,3 @@
-// src/controllers/authController.ts
-
 import bcrypt from "bcryptjs";
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
@@ -7,252 +5,196 @@ import mongoose from "mongoose";
 
 import User from "../models/User";
 import InviteCode from "../models/InviteCode";
-import SystemSettings from "../models/SystemSettings";
-import { getReferralCode } from "./referralController";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
+
+const JWT_SECRET = process.env.JWT_SECRET as string;
 const JWT_EXPIRES_IN = "30d";
 
+/**
+ * Generate unique referral code
+ */
+async function generateReferralCode(): Promise<string> {
 
-   
+  while (true) {
 
-function generateReferralCode() {
-  return (
-    "ATC" +
-    Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase()
-  );
+    const code =
+      "ATC" +
+      Math.random()
+        .toString(36)
+        .substring(2, 8)
+        .toUpperCase();
+
+    const exists = await User.findOne({
+      referralCode: code,
+    });
+
+    if (!exists) return code;
+
+  }
+
 }
 
-/* =====================================================
-   REGISTER USER
-===================================================== */
-export const registerUser = async (req: Request, res: Response) => {
+
+
+/**
+ * REGISTER USER — ENTERPRISE SAFE
+ */
+export const registerUser = async (
+  req: Request,
+  res: Response
+) => {
+
   try {
+
     const {
       email,
       password,
       name,
       fullName,
-      referralCode,
       inviteCode,
     } = req.body;
 
-    if (!email || !password) {
+    if (!email || !password)
       return res.status(400).json({
         message: "Email and password required",
       });
-    }
 
-    const settings =
-      (await SystemSettings.findOne()) ||
-      (await SystemSettings.create({}));
+    if (!inviteCode)
+      return res.status(400).json({
+        message: "Invite code required",
+      });
 
-    /* =============================
-       BETA VALIDATION
-    ============================= */
+    /**
+     * Validate invite
+     */
+    const invite = await InviteCode.findOne({
 
-    if (settings.beta?.active && settings.beta.inviteOnly) {
+      code: inviteCode.toUpperCase(),
 
-  if (!inviteCode) {
-    return res.status(403).json({
-      message: "Invite code required",
+      active: true,
+
+      usedBy: null,
+
     });
-  }
 
-  const codeDoc = await InviteCode.findOne({
-    code: inviteCode,
-    active: true,
-    usedBy: null,
-  });
+    if (!invite)
+      return res.status(403).json({
+        message: "Invalid or already used invite code",
+      });
 
-  if (!codeDoc) {
-    return res.status(403).json({
-      message: "Invalid or already used invite code",
-    });
-  }
-
-  (req as any).inviteDoc = codeDoc;
-
-  
-}
-    /* =============================
-       DUPLICATE CHECK
-    ============================= */
+    /**
+     * Check existing user
+     */
     const exists = await User.findOne({
+
       email: email.toLowerCase(),
+
     });
 
-    if (exists) {
+    if (exists)
       return res.status(409).json({
         message: "User already exists",
       });
-    }
 
-    /* =============================
-       HASH PASSWORD
-    ============================= */
+    /**
+     * Hash password
+     */
     const hash = await bcrypt.hash(password, 12);
 
-    /* =============================
-       CREATE USER
-    ============================= */
+    /**
+     * Generate safe unique values
+     */
+    const referralCode = await generateReferralCode();
 
-    const isEarly = true;
-    
+    const userId =
+      new mongoose.Types.ObjectId().toString();
+
+    /**
+     * Create user
+     */
     const user = await User.create({
-      userId: new mongoose.Types.ObjectId().toString(),
 
-      email,
+      userId,
+
+      email: email.toLowerCase(),
+
       password: hash,
 
       name,
+
       fullName,
 
-      referralCode: generateReferralCode(),
-
-      referredBy: referralCode || null,
+      referralCode,
 
       balance: 0,
+
       minutes: 0,
+
       atc: 0,
+
       rate: 0,
 
       totalEarnings: 0,
+
       totalMinutes: 0,
 
       pushTokens: [],
 
-      earlyAdopter: isEarly,
+      earlyAdopter: true,
+
     });
 
+    /**
+     * Mark invite used
+     */
+    invite.usedBy = user._id;
 
-    /* =============================
-       MARK INVITE USED
-    ============================= */
+    invite.usedAt = new Date();
 
-        if ((req as any).inviteDoc) {
+    invite.active = false;
 
-      const invite = (req as any).inviteDoc;
+    await invite.save();
 
-      invite.usedBy = user._id;
-
-      invite.usedAt = new Date();
-
-      invite.active = false;
-
-      await invite.save();
-    }
-
-    /* =============================
-       REFERRAL PROCESS
-    ============================= */
-    if (referralCode) {
-      await getReferralCode(
-        user._id.toString(),
-        referralCode
-      );
-    }
-
-    /* =============================
-       CREATE TOKEN
-    ============================= */
+    /**
+     * Generate token
+     */
     const token = jwt.sign(
+
       { id: user._id },
+
       JWT_SECRET,
+
       { expiresIn: JWT_EXPIRES_IN }
+
     );
 
     return res.status(201).json({
+
       message: "Registered successfully",
+
       token,
+
       user,
+
     });
 
-  } catch (error) {
-    console.error("REGISTER ERROR:", error);
-
-    return res.status(500).json({
-      message: "Server error",
-    });
   }
-};
 
-/* =====================================================
-   LOGIN USER
-===================================================== */
-export const loginUser = async (req: Request, res: Response) => {
-  try {
-    const { email, password } = req.body;
+  catch (error: any) {
 
-    const user = await User.findOne({
-      email: email.toLowerCase(),
-    });
-
-    if (!user) {
-      return res.status(401).json({
-        message: "Invalid login",
-      });
-    }
-
-    const valid = await bcrypt.compare(
-      password,
-      user.password
+    console.error(
+      "REGISTER CRITICAL ERROR:",
+      error
     );
 
-    if (!valid) {
-      return res.status(401).json({
-        message: "Invalid login",
-      });
-    }
-
-    const token = jwt.sign(
-      { id: user._id },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
-
-    return res.json({
-      token,
-      user,
-    });
-
-  } catch (error) {
-    console.error("LOGIN ERROR:", error);
-
     return res.status(500).json({
-      message: "Login failed",
-    });
-  }
-};
 
-/* =====================================================
-   GET CURRENT USER
-===================================================== */
-export const getMe = async (
-  req: any,
-  res: Response
-) => {
-  try {
-    const user = await User.findById(
-      req.user.id
-    ).select("-password");
-
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
-    }
-
-    return res.json(user);
-
-  } catch (error) {
-    console.error(error);
-
-    return res.status(500).json({
       message: "Server error",
+
+      error: error.message,
+
     });
+
   }
+
 };
