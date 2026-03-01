@@ -13,6 +13,19 @@ import { getReferralCode } from "./referralController";
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret";
 const JWT_EXPIRES_IN = "30d";
 
+
+   
+
+function generateReferralCode() {
+  return (
+    "ATC" +
+    Math.random()
+      .toString(36)
+      .substring(2, 8)
+      .toUpperCase()
+  );
+}
+
 /* =====================================================
    REGISTER USER
 ===================================================== */
@@ -82,30 +95,38 @@ export const registerUser = async (req: Request, res: Response) => {
     /* =============================
        CREATE USER
     ============================= */
-    const user = await User.create({
-      email: email.toLowerCase(),
-      password: hash,
 
-      name,
-      fullName,
+    const isEarly = true;
+    
+const user = await User.create({
+  userId: new mongoose.Types.ObjectId().toString(),
 
-      userId: new mongoose.Types.ObjectId().toString(),
+  email,
+  password: hash,
 
-      minutes: 0,
-      atc: 0,
-      rate: 0,
+  name,
+  fullName,
 
-      pushTokens: [],
+  referralCode: generateReferralCode(),
 
-      referralCode: Math.random()
-        .toString(36)
-        .substring(2, 10),
+  referredBy: referralCode || null,
 
-      referredBy: referralCode || "",
+  balance: 0,
+  minutes: 0,
+  atc: 0,
+  rate: 0,
 
-      earlyAdopter: true,
-      role: "user",
-    });
+  totalEarnings: 0,
+  totalMinutes: 0,
+
+  pushTokens: [],
+
+  earlyAdopter: isEarly,
+});
+
+
+
+    
 
     /* =============================
        MARK INVITE USED

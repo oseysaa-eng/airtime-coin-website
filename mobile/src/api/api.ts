@@ -7,7 +7,7 @@ import axios, { AxiosError } from "axios";
 const API = axios.create({
   baseURL:
     process.env.EXPO_PUBLIC_API_URL ||
-    "https://atc-backend-cn4f.onrender.com/api",
+    "https://atc-backend-cn4f.onrender.com",
   timeout: 15000,
   headers: {
     "Content-Type": "application/json",
