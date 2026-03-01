@@ -185,17 +185,22 @@ export const loginUser = async (
 
     if (!email || !password)
       return res.status(400).json({
-        message:
-          "Email and password required",
+        message: "Email and password required"
       });
 
+    // IMPORTANT: explicitly select password
     const user = await User.findOne({
-      email: email.toLowerCase(),
-    });
+      email: email.toLowerCase()
+    }).select("+password");
 
     if (!user)
       return res.status(401).json({
-        message: "Invalid login",
+        message: "Invalid email or password"
+      });
+
+    if (!user.password)
+      return res.status(500).json({
+        message: "User password missing (data integrity error)"
       });
 
     const valid = await bcrypt.compare(
@@ -205,28 +210,35 @@ export const loginUser = async (
 
     if (!valid)
       return res.status(401).json({
-        message: "Invalid login",
+        message: "Invalid email or password"
       });
+
+    if (!process.env.JWT_SECRET)
+      throw new Error("JWT_SECRET missing");
 
     const token = jwt.sign(
       { id: user._id },
-      JWT_SECRET,
-      {
-        expiresIn: JWT_EXPIRES_IN,
-      }
+      process.env.JWT_SECRET,
+      { expiresIn: "30d" }
     );
 
     return res.json({
+      message: "Login successful",
       token,
-      user,
+      user
     });
 
-  } catch (error) {
+  }
+  catch (error: any) {
 
-    console.error("LOGIN ERROR:", error);
+    console.error(
+      "LOGIN CRITICAL ERROR:",
+      error
+    );
 
     return res.status(500).json({
       message: "Login failed",
+      error: error.message
     });
 
   }
