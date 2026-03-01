@@ -1,5 +1,3 @@
-// src/routes/authRoutes.ts
-
 import express from "express";
 
 import {
@@ -12,10 +10,29 @@ import authMiddleware from "../middleware/authMiddleware";
 
 const router = express.Router();
 
-router.post("/register", registerUser);
+/**
+ * Register
+ */
+router.post(
+  "/register",
+  registerUser
+);
 
-router.post("/login", loginUser);
+/**
+ * Login
+ */
+router.post(
+  "/login",
+  loginUser
+);
 
-router.get("/me", authMiddleware, getMe);
+/**
+ * Get current user
+ */
+router.get(
+  "/me",
+  authMiddleware,
+  getMe
+);
 
 export default router;
