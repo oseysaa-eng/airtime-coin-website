@@ -1,9 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios, { AxiosError } from "axios";
 
-/**
- * Production backend URL
- */
 const API = axios.create({
   baseURL:
     process.env.EXPO_PUBLIC_API_URL ||
@@ -15,16 +12,20 @@ const API = axios.create({
 });
 
 /**
- * Attach auth token automatically
+ * Attach JWT automatically
  */
 API.interceptors.request.use(
   async (config) => {
     try {
+
       const token = await AsyncStorage.getItem("userToken");
+
+      console.log("TOKEN SENT:", token); // debug
 
       if (token && config.headers) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+
     } catch (err) {
       console.log("Token read error:", err);
     }
@@ -35,18 +36,21 @@ API.interceptors.request.use(
 );
 
 /**
- * Handle session expiration
+ * Auto logout if token invalid
  */
 API.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<any>) => {
+
     if (error.response?.status === 401) {
+
       console.log("Session expired");
 
       await AsyncStorage.multiRemove([
         "userToken",
         "userId",
       ]);
+
     }
 
     return Promise.reject(error);

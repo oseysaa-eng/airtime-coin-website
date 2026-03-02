@@ -1,4 +1,7 @@
-import express, { Request, Response } from "express";
+import express, { Response } from "express";
+import mongoose from "mongoose";
+import auth from "../middleware/authMiddleware";
+
 import AdReward from "../models/AdReward";
 import RewardPool from "../models/RewardPool";
 import SystemSettings from "../models/SystemSettings";
@@ -6,50 +9,44 @@ import Transaction from "../models/Transaction";
 import UserDailyStats from "../models/UserDailyStats";
 import UserTrust from "../models/UserTrust";
 import Wallet from "../models/Wallet";
+import User from "../models/User";
 import { verifyAdSignature } from "../utils/adSignature";
 
 const router = express.Router();
 
 /**
  * POST /api/ads/complete
- * Called after a rewarded ad is fully watched
  */
-router.post("/complete", async (req: Request, res: Response) => {
+router.post("/complete", auth, async (req: any, res: Response) => {
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
+
+    const userId = req.user.id;
+
     const {
-      userId,
-      adRewardId, // UNIQUE, GENERATED ON FRONTEND
+      adRewardId,
       network,
       rewardMinutes,
       signature,
     } = req.body;
 
-    /* ─────────────────────────
-       BASIC VALIDATION
-    ───────────────────────── */
-
-    if (!userId || !adRewardId || !network || !rewardMinutes) {
+    if (!adRewardId || !network || !rewardMinutes)
       return res.status(400).json({
-        message: "Missing required reward parameters",
+        message: "Missing reward parameters",
       });
-    }
 
-    /* ─────────────────────────
-       VERIFY AD SIGNATURE
-    ───────────────────────── */
-
-    if (!verifyAdSignature(req.body, signature)) {
+    if (!verifyAdSignature(req.body, signature))
       return res.status(403).json({
         message: "Invalid ad signature",
       });
-    }
 
-    /* ─────────────────────────
-       IDEMPOTENCY CHECK (CRITICAL)
-    ───────────────────────── */
-
-    const alreadyRewarded = await AdReward.findOne({ adRewardId });
-    if (alreadyRewarded) {
+    // Prevent duplicate reward
+    const existing = await AdReward.findOne({ adRewardId });
+    if (existing) {
+      await session.abortTransaction();
       return res.json({
         success: true,
         creditedMinutes: 0,
@@ -57,42 +54,28 @@ router.post("/complete", async (req: Request, res: Response) => {
       });
     }
 
-    /* ─────────────────────────
-       INCIDENT / KILL SWITCH
-    ───────────────────────── */
-
+    // Check system status
     const settings = await SystemSettings.findOne();
-    if (settings?.incidentMode?.active) {
+    if (settings?.incidentMode?.active)
       return res.status(403).json({
         message: "System temporarily unavailable",
-        incident: settings.incidentMode.message,
       });
-    }
-
-    /* ─────────────────────────
-       REWARD POOL CHECK
-    ───────────────────────── */
 
     const pool = await RewardPool.findOne({ type: "ADS" });
-    if (!pool || pool.paused) {
+    if (!pool || pool.paused)
       return res.status(403).json({
-        message: "Ad rewards are currently paused",
+        message: "Ad rewards paused",
       });
-    }
 
-    /* ─────────────────────────
-       TRUST & MULTIPLIER
-    ───────────────────────── */
-
+    // Trust check
     const trust =
       (await UserTrust.findOne({ userId })) ||
       (await UserTrust.create({ userId }));
 
-    if (trust.score < 40) {
+    if (trust.score < 40)
       return res.status(403).json({
-        message: "Rewards blocked due to trust status",
+        message: "Rewards blocked",
       });
-    }
 
     let multiplier = 1;
     if (trust.score < 80) multiplier = 0.75;
@@ -100,17 +83,11 @@ router.post("/complete", async (req: Request, res: Response) => {
 
     const creditedMinutes = Math.floor(rewardMinutes * multiplier);
 
-    if (creditedMinutes <= 0) {
+    if (creditedMinutes <= 0)
       return res.json({
         success: true,
         creditedMinutes: 0,
       });
-    }
-
-    
-    /* ─────────────────────────
-       DAILY LIMITS (BETA SAFETY)
-    ───────────────────────── */
 
     const today = new Date().toISOString().slice(0, 10);
 
@@ -122,81 +99,79 @@ router.post("/complete", async (req: Request, res: Response) => {
         date: today,
         adsWatched: 0,
         minutesEarned: 0,
+        lastAdAt: null,
       });
     }
 
-    if (stats.adsWatched >= 10) {
+    // Cooldown BEFORE credit
+    if (stats.lastAdAt) {
+      const diff = Date.now() - stats.lastAdAt.getTime();
+      if (diff < 60 * 1000)
+        return res.status(429).json({
+          message: "Please wait before next ad",
+        });
+    }
+
+    if (stats.adsWatched >= 10)
       return res.status(403).json({
         message: "Daily ad limit reached",
       });
-    }
 
-    if (stats.minutesEarned + creditedMinutes > 50) {
+    if (stats.minutesEarned + creditedMinutes > 50)
       return res.status(403).json({
         message: "Daily reward cap reached",
       });
-    }
 
-    /* ─────────────────────────
-       WALLET UPDATE
-    ───────────────────────── */
-
+    // Wallet update
     const wallet =
       (await Wallet.findOne({ userId })) ||
       (await Wallet.create({ userId }));
 
     wallet.totalMinutes += creditedMinutes;
     wallet.todayMinutes += creditedMinutes;
-    await wallet.save();
+    await wallet.save({ session });
 
-    /* ─────────────────────────
-       LOCK REWARD (IDEMPOTENT)
-    ───────────────────────── */
-
-
-if (stats.lastAdAt) {
-  const diff = Date.now() - stats.lastAdAt.getTime();
-
-  if (diff < 60 * 1000) {
-    return res.status(429).json({
-      message: "Please wait before watching another ad",
-      cooldown: Math.ceil((60000 - diff) / 1000),
-    });
-  }
-}
-
-    await AdReward.create({
+    // Update user summary
+    await User.findByIdAndUpdate(
       userId,
-      adRewardId,
-      network,
-      rewardMinutes: creditedMinutes,
-    });
+      {
+        $inc: { totalMinutes: creditedMinutes },
+      },
+      { session }
+    );
+
+    // Log reward
+    await AdReward.create(
+      [
+        {
+          userId,
+          adRewardId,
+          network,
+          rewardMinutes: creditedMinutes,
+        },
+      ],
+      { session }
+    );
 
     stats.adsWatched += 1;
     stats.minutesEarned += creditedMinutes;
-    await stats.save();
-
     stats.lastAdAt = new Date();
-await stats.save();
+    await stats.save({ session });
 
-    /* ─────────────────────────
-       TRANSACTION LOG
-    ───────────────────────── */
+    await Transaction.create(
+      [
+        {
+          userId,
+          type: "EARN",
+          amount: creditedMinutes,
+          source: "ADS",
+        },
+      ],
+      { session }
+    );
 
-    await Transaction.create({
-      userId,
-      type: "EARN",
-      amount: creditedMinutes,
-      source: "ADS",
-      meta: {
-        network,
-        adRewardId,
-      },
-    });
-
-    /* ─────────────────────────
-       RESPONSE
-    ───────────────────────── */
+    await session.commitTransaction();
+    session.endSession();
 
     return res.json({
       success: true,
@@ -204,11 +179,18 @@ await stats.save();
     });
 
   } catch (error) {
+
+    await session.abortTransaction();
+    session.endSession();
+
     console.error("ADS REWARD ERROR:", error);
+
     return res.status(500).json({
       message: "Failed to process ad reward",
     });
+
   }
+
 });
 
 export default router;
