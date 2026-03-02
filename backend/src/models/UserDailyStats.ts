@@ -24,6 +24,11 @@ const UserDailyStatsSchema = new mongoose.Schema(
       default: 0,
     },
 
+      lastAdAt: {
+    type: Date,
+    default: null,
+  },
+
     minutesEarned: {
       type: Number,
       default: 0,
@@ -38,3 +43,4 @@ export default mongoose.model(
   "UserDailyStats",
   UserDailyStatsSchema
 );
+

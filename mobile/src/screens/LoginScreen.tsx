@@ -16,8 +16,12 @@ import {
 } from "react-native";
 
 import API from "../api/api";
-import { saveLoginData } from "../utils/authStorage";
 import { getDeviceFingerprint } from "../utils/deviceFingerprint";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+
+
+
 
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState("");
@@ -67,39 +71,44 @@ export default function LoginScreen({ navigation }: any) {
   // ===============================
   // EMAIL LOGIN (PRIMARY)
   // ===============================
-  const handleLogin = async () => {
-    if (!validate()) return;
+const handleLogin = async () => {
+  if (!validate()) return;
 
-    if (!fingerprint) {
-      Alert.alert("Device Error", "Unable to verify this device");
-      return;
+  if (!fingerprint) {
+    Alert.alert("Device Error", "Unable to verify this device");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const res = await API.post("/api/auth/login", {
+      email,
+      password,
+      fingerprint,
+    });
+
+    if (!res.data?.token) {
+      throw new Error("Invalid login response");
     }
 
-    try {
-      setLoading(true);
+    // ✅ Save using SAME key API expects
+    await AsyncStorage.setItem("userToken", res.data.token);
+    await AsyncStorage.setItem("userId", res.data.user._id);
 
-      const res = await API.post("/api/auth/login", {
-        email,
-        password,
-        fingerprint,
-      });
+    navigation.replace("AppDrawer");
 
-      if (!res.data?.token) {
-        throw new Error("Invalid login response");
-      }
+  } catch (err: any) {
 
-      await saveLoginData(res.data.token, res.data.user);
+    Alert.alert(
+      "Login Failed",
+      err?.response?.data?.message || "Invalid credentials"
+    );
 
-      navigation.replace("AppDrawer");
-    } catch (err: any) {
-      Alert.alert(
-        "Login Failed",
-        err?.response?.data?.message || "Invalid credentials"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   // ===============================
   // BIOMETRIC LOGIN (TOKEN ONLY)
