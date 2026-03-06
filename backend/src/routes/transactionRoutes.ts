@@ -10,7 +10,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
   const userId = (req as any).user._id;
 
   try {
-    const transactions = await Transaction.find({ user: userId }).sort({ createdAt: -1 });
+    const transactions = await Transaction.find({ userId }).sort({ createdAt: -1 });
     res.status(200).json(transactions);
   } catch (err) {
     console.error(err);

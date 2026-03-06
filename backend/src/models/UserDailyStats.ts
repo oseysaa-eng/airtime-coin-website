@@ -2,11 +2,12 @@ import mongoose from "mongoose";
 
 const UserDailyStatsSchema = new mongoose.Schema(
   {
-    userId: {
-      type: String,
-      required: true,
-      index: true,
-    },
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+    index: true
+  },
 
     date: {
       type: String, // YYYY-MM-DD
