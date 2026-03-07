@@ -20,21 +20,15 @@ import {
 import API from "../api/api";
 import { emitDashboardUpdate } from "../utils/events";
 
-/* ─────────────────────────────
-   CONFIG
-───────────────────────────── */
+/* CONFIG */
 
 const REWARDED_AD_UNIT_ID = __DEV__
   ? TestIds.REWARDED
   : "ca-app-pub-1665828711086363/4578870803";
 
-const rewarded = RewardedAd.createForAdRequest(REWARDED_AD_UNIT_ID, {
-  requestNonPersonalizedAdsOnly: true,
-});
+const rewarded = RewardedAd.createForAdRequest(REWARDED_AD_UNIT_ID);
 
-/* ─────────────────────────────
-   COMPONENT
-───────────────────────────── */
+/* COMPONENT */
 
 export default function EarnScreen() {
   const navigation = useNavigation<any>();
@@ -43,23 +37,18 @@ export default function EarnScreen() {
   const [loading, setLoading] = useState(false);
   const [refCode, setRefCode] = useState("");
 
-  // ⏱️ Cooldown
   const [cooldown, setCooldown] = useState(0);
   const cooldownRef = useRef<NodeJS.Timeout | null>(null);
 
-  /* ─────────────────────────────
-     HELPERS
-  ───────────────────────────── */
+  /* UNIQUE REWARD ID */
 
   const generateAdRewardId = () =>
     `ad_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-  /* ─────────────────────────────
-     AD EVENTS (ONE LISTENER)
-  ───────────────────────────── */
+  /* AD EVENTS */
 
   useEffect(() => {
-    const unsubscribe = rewarded.addAdEventsListener(event => {
+    const unsubscribe = rewarded.addAdEventsListener((event) => {
       switch (event.type) {
         case RewardedAdEventType.LOADED:
           setRewardedReady(true);
@@ -70,12 +59,12 @@ export default function EarnScreen() {
           break;
 
         case RewardedAdEventType.CLOSED:
-          setRewardedReady(false);
           rewarded.load();
+          setRewardedReady(false);
           break;
 
         case RewardedAdEventType.ERROR:
-          console.error("Ad error:", event.error);
+          console.log("Ad error:", event.error);
           break;
       }
     });
@@ -86,9 +75,7 @@ export default function EarnScreen() {
     return unsubscribe;
   }, []);
 
-  /* ─────────────────────────────
-     COOLDOWN TIMER
-  ───────────────────────────── */
+  /* COOLDOWN TIMER */
 
   useEffect(() => {
     if (cooldown <= 0) {
@@ -100,7 +87,7 @@ export default function EarnScreen() {
     }
 
     cooldownRef.current = setInterval(() => {
-      setCooldown(prev => prev - 1);
+      setCooldown((prev) => prev - 1);
     }, 1000);
 
     return () => {
@@ -108,74 +95,72 @@ export default function EarnScreen() {
     };
   }, [cooldown]);
 
-  /* ─────────────────────────────
-     CLAIM AD REWARD
-  ───────────────────────────── */
+  /* CLAIM AD REWARD */
+const claimAdReward = async () => {
 
-  const claimAdReward = async () => {
-    try {
-      setLoading(true);
+  try {
 
-      const userId = await AsyncStorage.getItem("userId");
-      if (!userId) {
-        Alert.alert("Error", "User not logged in");
-        return;
-      }
+    setLoading(true);
 
-      const res = await API.post("/api/ads/complete", {
-        userId,
-        adId: generateAdRewardId(),
-        network: "ADMOB",
-        rewardMinutes: 5,
-        signature: "SIGNED_PAYLOAD", // backend validates
-      });
+    const res = await API.post("/api/ads/complete", {
+      adRewardId: generateAdRewardId(),
+      network: "ADMOB",
+      rewardMinutes: 5,
+      signature: "SIGNED_PAYLOAD"
+    });
 
-      Alert.alert(
-        "Reward Earned 🎉",
-        `You earned ${res.data.creditedMinutes} minutes`
-      );
-
-      emitDashboardUpdate();
-
-      // ⏱️ Start cooldown (beta safe)
-      setCooldown(60);
-
-    } catch (err: any) {
-      Alert.alert(
-        "Reward Failed",
-        err?.response?.data?.message || "Unable to credit reward"
-      );
-    } finally {
-      setLoading(false);
+    if (!res.data.success) {
+      throw new Error("Reward rejected");
     }
-  };
 
-  /* ─────────────────────────────
-     WATCH AD
-  ───────────────────────────── */
+    Alert.alert(
+      "Reward Earned 🎉",
+      `You earned ${res.data.creditedMinutes} minutes`
+    );
 
+    emitDashboardUpdate();
+
+    setCooldown(60);
+
+  } catch (err: any) {
+
+    console.log("Ad reward error:", err?.response?.data);
+
+    Alert.alert(
+      "Reward Failed",
+      err?.response?.data?.message || "Unable to credit reward"
+    );
+
+  } finally {
+
+    setLoading(false);
+
+  }
+
+};
+
+  /* WATCH AD */
   const watchAd = () => {
-    if (cooldown > 0) {
-      Alert.alert(
-        "Please wait",
-        `Next ad available in ${cooldown} seconds`
-      );
-      return;
-    }
 
-    if (!rewardedReady) {
-      Alert.alert("Loading", "Ad is still loading...");
-      return;
-    }
+  if (cooldown > 0) {
+    Alert.alert(
+      "Please wait",
+      `Next ad available in ${cooldown} seconds`
+    );
+    return;
+  }
 
-    rewarded.show();
-  };
+  if (!rewardedReady) {
+    Alert.alert("Loading", "Ad is still loading...");
+    return;
+  }
 
-  /* ─────────────────────────────
-     REFERRAL
-  ───────────────────────────── */
+  rewarded.show();
 
-  const fetchReferral = async () => {
+};
+
+  /* REFERRAL */
+      const fetchReferral = async () => {
     try {
       const res = await API.post("/api/referrals/create");
       setRefCode(res.data.code);
@@ -194,19 +179,17 @@ export default function EarnScreen() {
     Alert.alert("Copied", "Referral message copied to clipboard.");
   };
 
-  /* ─────────────────────────────
-     DAILY BONUS
-  ───────────────────────────── */
+  /* DAILY BONUS */
 
   const claimDaily = async () => {
     try {
       setLoading(true);
-      const res = await API.post("/api/earn/daily");
 
-      Alert.alert(
-        "Daily Bonus",
-        `+${res.data.earnedMinutes || 3} minutes`
-      );
+      const res = await API.post("/api/earn");
+
+      const earned = res?.data?.earnedMinutes || 0;
+
+      Alert.alert("Daily Bonus", `+${earned} minutes`);
 
       emitDashboardUpdate();
     } catch (e: any) {
@@ -219,30 +202,24 @@ export default function EarnScreen() {
     }
   };
 
-  /* ─────────────────────────────
-     SURVEY
-  ───────────────────────────── */
+  /* SURVEY */
 
   const openSurvey = async () => {
     const userId = await AsyncStorage.getItem("userId");
     if (!userId) return;
 
-    Linking.openURL(`https://offerwell.pipedrive.com/scheduler/drq7OqhD/offerwell-demo=${userId}`);
+    Linking.openURL(
+      `https://offerwell.pipedrive.com/scheduler/drq7OqhD/offerwell-demo=${userId}`
+    );
   };
 
-  /* ─────────────────────────────
-     UI
-  ───────────────────────────── */
+  /* UI */
 
   return (
     <View style={s.container}>
       <Text style={s.title}>Earn Minutes</Text>
 
-      <TouchableOpacity
-        style={s.card}
-        onPress={watchAd}
-        disabled={loading}
-      >
+      <TouchableOpacity style={s.card} onPress={watchAd} disabled={loading}>
         <Text style={s.task}>Watch Rewarded Ad</Text>
         <Text style={s.reward}>+5 mins</Text>
 
@@ -251,17 +228,11 @@ export default function EarnScreen() {
         )}
 
         {cooldown > 0 && (
-          <Text style={s.loading}>
-            Next ad in {cooldown}s
-          </Text>
+          <Text style={s.loading}>Next ad in {cooldown}s</Text>
         )}
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={s.card}
-        onPress={claimDaily}
-        disabled={loading}
-      >
+      <TouchableOpacity style={s.card} onPress={claimDaily}>
         <Text style={s.task}>Claim Daily Bonus</Text>
         <Text style={s.reward}>+3 mins</Text>
       </TouchableOpacity>
@@ -291,22 +262,34 @@ export default function EarnScreen() {
   );
 }
 
-/* ─────────────────────────────
-   STYLES
-───────────────────────────── */
+/* STYLES */
 
 const s = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: "#fff" },
+
   title: { fontSize: 22, fontWeight: "700", marginBottom: 12 },
+
   card: {
     padding: 16,
     backgroundColor: "#f1f5f9",
     borderRadius: 12,
     marginBottom: 10,
   },
+
   task: { fontSize: 16, fontWeight: "600" },
-  reward: { marginTop: 6, color: "#0ea5a4", fontWeight: "700" },
-  loading: { color: "#64748b", marginTop: 6, fontSize: 12 },
+
+  reward: {
+    marginTop: 6,
+    color: "#0ea5a4",
+    fontWeight: "700",
+  },
+
+  loading: {
+    color: "#64748b",
+    marginTop: 6,
+    fontSize: 12,
+  },
+
   refBtn: {
     marginTop: 8,
     backgroundColor: "#0ea5a4",

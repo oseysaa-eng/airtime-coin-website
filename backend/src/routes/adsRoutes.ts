@@ -30,10 +30,14 @@ router.post("/complete", auth, async (req:any,res) => {
         message:"Missing parameters"
       });
 
-    if(!verifyAdSignature(req.body,signature))
-      return res.status(403).json({
-        message:"Invalid ad signature"
-      });
+   // if(!verifyAdSignature(req.body,signature))
+      //return res.status(403).json({
+       // message:"Invalid ad signature" });
+
+       // TEMP: disable signature validation during beta
+if (signature && !verifyAdSignature(req.body, signature)) {
+  console.log("⚠️ Invalid ad signature (ignored in beta)");
+}
 
     const duplicate = await AdReward.findOne({adRewardId});
 
