@@ -266,7 +266,7 @@ function AppBootstrap() {
   useEffect(()=> {
   (async ()=>{
     const uid = await AsyncStorage.getItem("userId");
-    connectSocket("https://api.airtimecoin.africa");
+    connectSocket("https://atc-backend-cn4f.onrender.com");
     if(uid) joinUserRoom(uid);
     onMinutesCredit(p => console.log("Realtime credit", p));
   })();
