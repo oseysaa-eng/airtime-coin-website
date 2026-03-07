@@ -55,12 +55,15 @@ if (signature && !verifyAdSignature(req.body, signature)) {
         message:"System unavailable"
       });
 
-    const pool = await RewardPool.findOne({type:"ADS"});
 
-    if(!pool || pool.paused)
-      return res.status(403).json({
-        message:"Ads paused"
-      });
+      let pool = await RewardPool.findOne({ type: "ADS" });
+
+if (!pool) {
+  pool = await RewardPool.create({
+    type: "ADS",
+    paused: false
+  });
+}
 
     const trust =
       (await UserTrust.findOne({userId})) ||
@@ -84,6 +87,8 @@ if (signature && !verifyAdSignature(req.body, signature)) {
         success:true,
         creditedMinutes:0
       });
+
+      
 
     const today = new Date().toISOString().slice(0,10);
 
