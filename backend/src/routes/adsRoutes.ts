@@ -9,8 +9,29 @@ import UserTrust from "../models/UserTrust";
 
 import { verifyAdSignature } from "../utils/adSignature";
 import { rewardEngine } from "../services/rewardEngine";
+import { getDynamicReward } from "../services/miningDifficulty";
+import { addMinedMinutes } from "../services/emissionTracker";
 
 const router = express.Router();
+
+/* ----------------------------------
+   DAILY POOL RESET HELPER
+---------------------------------- */
+
+function resetDailyPool(pool: any) {
+
+  const now = new Date();
+  const last = new Date(pool.lastReset);
+
+  if (
+    now.getUTCDate() !== last.getUTCDate() ||
+    now.getUTCMonth() !== last.getUTCMonth() ||
+    now.getUTCFullYear() !== last.getUTCFullYear()
+  ) {
+    pool.spentTodayATC = 0;
+    pool.lastReset = now;
+  }
+}
 
 /*
   POST /api/ads/complete
@@ -85,6 +106,12 @@ router.post("/complete", auth, async (req: any, res) => {
       });
 
     /* ---------------------------
+       DAILY BUDGET RESET
+    --------------------------- */
+
+    resetDailyPool(pool);
+
+    /* ---------------------------
        TRUST CHECK
     --------------------------- */
 
@@ -110,7 +137,7 @@ router.post("/complete", auth, async (req: any, res) => {
        SERVER CONTROLLED REWARD
     --------------------------- */
 
-    const REWARD_MINUTES = 5;
+    const REWARD_MINUTES = await getDynamicReward();
 
     const creditedMinutes =
       Math.floor(REWARD_MINUTES * multiplier);
@@ -119,6 +146,15 @@ router.post("/complete", auth, async (req: any, res) => {
       return res.json({
         success: true,
         creditedMinutes: 0
+      });
+
+    /* ---------------------------
+       GLOBAL REWARD BUDGET
+    --------------------------- */
+
+    if (pool.spentTodayATC + creditedMinutes > pool.dailyLimitATC)
+      return res.status(403).json({
+        message: "Daily reward budget exhausted"
       });
 
     /* ---------------------------
@@ -141,7 +177,7 @@ router.post("/complete", auth, async (req: any, res) => {
     }
 
     /* ---------------------------
-       AD COOLDOWN (60s)
+       AD COOLDOWN
     --------------------------- */
 
     if (stats.lastAdAt) {
@@ -156,7 +192,7 @@ router.post("/complete", auth, async (req: any, res) => {
     }
 
     /* ---------------------------
-       DAILY LIMIT
+       DAILY USER LIMIT
     --------------------------- */
 
     if (stats.adsWatched >= 10)
@@ -178,8 +214,10 @@ router.post("/complete", auth, async (req: any, res) => {
       io
     });
 
+    await addMinedMinutes(creditedMinutes);
+
     /* ---------------------------
-       UPDATE STATS
+       UPDATE USER STATS
     --------------------------- */
 
     stats.adsWatched += 1;
@@ -187,6 +225,14 @@ router.post("/complete", auth, async (req: any, res) => {
     stats.lastAdAt = new Date();
 
     await stats.save();
+
+    /* ---------------------------
+       UPDATE GLOBAL POOL
+    --------------------------- */
+
+    pool.spentTodayATC += creditedMinutes;
+
+    await pool.save();
 
     /* ---------------------------
        LOG REWARD
@@ -200,7 +246,7 @@ router.post("/complete", auth, async (req: any, res) => {
     });
 
     /* ---------------------------
-       SUCCESS
+       SUCCESS RESPONSE
     --------------------------- */
 
     res.json({

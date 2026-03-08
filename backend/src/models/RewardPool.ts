@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
-const RewardPoolSchema = new mongoose.Schema({
-
+const RewardPoolSchema = new mongoose.Schema(
+{
   type: {
     type: String,
     enum: ["CALL", "ADS", "SURVEY"],
@@ -17,7 +17,7 @@ const RewardPoolSchema = new mongoose.Schema({
 
   dailyLimitATC: {
     type: Number,
-    default: 0.5
+    default: 50000   // max minutes distributed per day
   },
 
   spentTodayATC: {
@@ -36,8 +36,7 @@ const RewardPoolSchema = new mongoose.Schema({
   }
 
 },
-{
-  timestamps: true
-});
+{ timestamps: true }
+);
 
 export default mongoose.model("RewardPool", RewardPoolSchema);
