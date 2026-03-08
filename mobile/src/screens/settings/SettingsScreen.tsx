@@ -69,11 +69,7 @@ export default function SettingsScreen() {
           onPress={() => navigation.navigate("WithdrawalPin")}
         />
 
-        <SettingsRow
-          icon={<Ionicons name="lock-closed-outline" size={22} />}
-          label="Change Password"
-          onPress={() => navigation.navigate("ChangePassword")}
-        />
+
 
         <SettingsRow
       icon={<Ionicons name="phone-portrait-outline" size={22} />}
