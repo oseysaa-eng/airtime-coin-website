@@ -40,3 +40,4 @@ const RewardPoolSchema = new mongoose.Schema(
 );
 
 export default mongoose.model("RewardPool", RewardPoolSchema);
+
