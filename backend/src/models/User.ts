@@ -54,9 +54,15 @@ const UserSchema = new Schema<IUser>(
       select: false,
     },
 
-    name: String,
-
-    fullName: String,
+    name: {
+  type: String,
+  required: true
+},
+  
+    fullName: {
+  type: String,
+  required: true
+},
 
     referralCode: {
       type: String,
