@@ -8,6 +8,7 @@ const EmissionStateSchema = new mongoose.Schema(
   lastHalvingAt: { type: Date, default: Date.now },
     totalMinutesMined: {type: Number,default: 0},
     currentReward: {type: Number, default: 5},
+    
 },
 { timestamps:true }
 );

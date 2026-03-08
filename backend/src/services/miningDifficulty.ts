@@ -1,4 +1,5 @@
 import EmissionState from "../models/EmissionState";
+import { getHalvingReward } from "./halvingEngine";
 
 export async function getDynamicReward(){
 
@@ -10,30 +11,30 @@ export async function getDynamicReward(){
 
   const mined = state.totalMinutesMined;
 
-  let reward = 5;
-  let phase = 0;
+  const halvingReward =
+    await getHalvingReward();
 
-  if(mined > 20000000){
-    reward = 1;
-    phase = 4;
-  }
-  else if(mined > 10000000){
-    reward = 2;
-    phase = 3;
-  }
-  else if(mined > 5000000){
-    reward = 3;
-    phase = 2;
-  }
-  else if(mined > 1000000){
-    reward = 4;
-    phase = 1;
-  }
+  let difficultyFactor = 1;
 
-  state.currentReward = reward;
-  state.phase = phase;
+  if(mined > 20000000)
+    difficultyFactor = 0.2;
+  else if(mined > 10000000)
+    difficultyFactor = 0.4;
+  else if(mined > 5000000)
+    difficultyFactor = 0.6;
+  else if(mined > 1000000)
+    difficultyFactor = 0.8;
+
+  const finalReward =
+    Math.max(1,
+      Math.floor(
+        halvingReward * difficultyFactor
+      )
+    );
+
+  state.currentReward = finalReward;
 
   await state.save();
 
-  return reward;
+  return finalReward;
 }
