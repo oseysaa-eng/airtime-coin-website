@@ -1,70 +1,189 @@
-import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import API from '../api/api';
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  Alert,
+} from "react-native";
 
-export default function EditProfileScreen({ navigation }: any) {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+import * as ImagePicker from "expo-image-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import API from "../api/api";
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await API.get('/user/profile');
-        setName(res.data.name || '');
-        setPhone(res.data.phone || '');
-        setAvatarUri(res.data.profileImage || null);
-      } catch (err) { console.log(err); }
-    })();
-  }, []);
+export default function EditProfileScreen() {
 
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing:true, aspect:[1,1], quality:0.7, base64:false });
-    if (!result.canceled && result.assets?.[0].uri) setAvatarUri(result.assets[0].uri);
+  const [name,setName] = useState("");
+  const [email,setEmail] = useState("");
+  const [avatar,setAvatar] = useState<string | null>(null);
+
+  useEffect(()=>{
+
+    loadUser();
+
+  },[]);
+
+  const loadUser = async()=>{
+
+    const res = await API.get("/api/summary");
+
+    setName(res.data.name);
+    setEmail(res.data.email);
+    setAvatar(res.data.profileImage);
+
   };
 
-  const save = async () => {
-    setLoading(true);
-    try {
-      const form = new FormData();
-      form.append('name', name);
-      form.append('phone', phone);
-      if (avatarUri) form.append('avatar', { uri: avatarUri, name: `avatar-${Date.now()}.jpg`, type: 'image/jpeg' } as any);
+  /* PICK IMAGE */
 
-      const res = await API.put('/user/profile', form, { headers: { 'Content-Type': 'multipart/form-data' }});
-      Alert.alert('Saved', 'Profile updated');
-      navigation.goBack();
-    } catch (err: any) {
-      console.error(err);
-      Alert.alert('Error', err?.response?.data?.message || 'Failed to update');
-    } finally { setLoading(false); }
+  const pickImage = async()=>{
+
+    const result =
+      await ImagePicker.launchImageLibraryAsync({
+
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing:true,
+        aspect:[1,1],
+        quality:0.7
+
+      });
+
+    if(!result.canceled){
+
+      setAvatar(result.assets[0].uri);
+
+    }
+
   };
 
-  return (
+  /* SAVE PROFILE */
+
+  const saveProfile = async()=>{
+
+    try{
+
+      const res = await API.put("/api/user/update-profile",{
+
+        name,
+        email,
+        profileImage:avatar
+
+      });
+
+      await AsyncStorage.setItem("userName",name);
+
+      if(avatar)
+        await AsyncStorage.setItem("avatar",avatar);
+
+      Alert.alert("Success","Profile updated");
+
+    }catch(err){
+
+      Alert.alert("Error","Profile update failed");
+
+    }
+
+  };
+
+  return(
+
     <View style={styles.container}>
-      <Text style={styles.title}>Edit Profile</Text>
+
+      {/* AVATAR */}
+
       <TouchableOpacity onPress={pickImage}>
-        {avatarUri ? <Image source={{ uri: avatarUri }} style={styles.avatar} /> : <View style={styles.avatarPlaceholder}><Text>Tap to add</Text></View>}
+
+        {avatar ? (
+
+          <Image
+            source={{uri:avatar}}
+            style={styles.avatar}
+          />
+
+        ):(
+          <View style={styles.avatarPlaceholder}>
+            <Text style={{color:"#fff"}}>Add Photo</Text>
+          </View>
+        )}
+
       </TouchableOpacity>
 
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Name" />
-      <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="Phone" keyboardType="phone-pad" />
+      {/* NAME */}
 
-      <TouchableOpacity style={styles.saveBtn} onPress={save} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save</Text>}
+      <TextInput
+        style={styles.input}
+        placeholder="Name"
+        value={name}
+        onChangeText={setName}
+      />
+
+      {/* EMAIL */}
+
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        value={email}
+        onChangeText={setEmail}
+      />
+
+      {/* SAVE BUTTON */}
+
+      <TouchableOpacity
+        style={styles.button}
+        onPress={saveProfile}
+      >
+        <Text style={{color:"#fff",fontWeight:"700"}}>
+          Save Profile
+        </Text>
       </TouchableOpacity>
+
     </View>
+
   );
+
 }
 
 const styles = StyleSheet.create({
-  container:{flex:1,padding:18},
-  title:{fontSize:20,fontWeight:'700',marginBottom:12},
-  avatar:{width:100,height:100,borderRadius:50,alignSelf:'center',marginBottom:12},
-  avatarPlaceholder:{width:100,height:100,borderRadius:50,backgroundColor:'#eee',justifyContent:'center',alignItems:'center',alignSelf:'center',marginBottom:12},
-  input:{borderWidth:1,borderColor:'#ddd',padding:12,borderRadius:8,marginBottom:10},
-  saveBtn:{backgroundColor:'#0ea5a4',padding:14,alignItems:'center',borderRadius:8},
-  saveText:{color:'#fff',fontWeight:'700'}
+
+container:{
+flex:1,
+padding:20,
+backgroundColor:"#fff"
+},
+
+avatar:{
+width:120,
+height:120,
+borderRadius:60,
+alignSelf:"center",
+marginBottom:20
+},
+
+avatarPlaceholder:{
+width:120,
+height:120,
+borderRadius:60,
+backgroundColor:"#0ea5a4",
+alignSelf:"center",
+alignItems:"center",
+justifyContent:"center",
+marginBottom:20
+},
+
+input:{
+borderWidth:1,
+borderColor:"#e5e7eb",
+padding:12,
+borderRadius:10,
+marginBottom:15
+},
+
+button:{
+backgroundColor:"#0ea5a4",
+padding:15,
+borderRadius:12,
+alignItems:"center"
+}
+
 });
