@@ -5,7 +5,6 @@ import { useNavigation } from "@react-navigation/native";
 import React from "react";
 import { ScrollView } from "react-native";
 
-
 import ProfileHeader from "./components/ProfileHeader";
 import SettingsRow from "./components/SettingsRow";
 import SettingsSection from "./components/SettingsSection";
@@ -14,11 +13,13 @@ import SettingsSwitchRow from "./components/SettingsSwitchRow";
 import { useSettings } from "./hooks/useSettings";
 
 export default function SettingsScreen() {
+
   const navigation = useNavigation<any>();
 
   const {
     userName,
     userId,
+    profileImage,
     biometricEnabled,
     notificationsEnabled,
     toggleBiometric,
@@ -26,16 +27,25 @@ export default function SettingsScreen() {
   } = useSettings();
 
   return (
+
     <ScrollView
       style={{ flex: 1, backgroundColor: "#f8fafc" }}
       contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
       showsVerticalScrollIndicator={false}
     >
+
       {/* PROFILE */}
-      <ProfileHeader name={userName} userId={userId} />
+
+      <ProfileHeader
+        name={userName}
+        userId={userId}
+        avatar={profileImage}
+      />
 
       {/* ACCOUNT */}
+
       <SettingsSection title="Account">
+
         <SettingsRow
           icon={<Ionicons name="person-outline" size={22} />}
           label="Edit Profile"
@@ -47,17 +57,15 @@ export default function SettingsScreen() {
           label="Manage Wallets"
           onPress={() => navigation.navigate("ManageWallets")}
         />
+
       </SettingsSection>
 
       {/* SECURITY */}
+
       <SettingsSection title="Security">
+
         <SettingsSwitchRow
-          icon={
-            <Ionicons
-              name="finger-print-outline"
-              size={22}
-            />
-          }
+          icon={<Ionicons name="finger-print-outline" size={22} />}
           label="Biometric Login"
           value={biometricEnabled}
           onChange={toggleBiometric}
@@ -69,24 +77,20 @@ export default function SettingsScreen() {
           onPress={() => navigation.navigate("WithdrawalPin")}
         />
 
-
-
         <SettingsRow
-      icon={<Ionicons name="phone-portrait-outline" size={22} />}
-      label="My Devices"
-      onPress={() => navigation.navigate("Devices")}
-    />
+          icon={<Ionicons name="phone-portrait-outline" size={22} />}
+          label="My Devices"
+          onPress={() => navigation.navigate("Devices")}
+        />
+
       </SettingsSection>
 
       {/* PREFERENCES */}
+
       <SettingsSection title="Preferences">
+
         <SettingsSwitchRow
-          icon={
-            <Ionicons
-              name="notifications-outline"
-              size={22}
-            />
-          }
+          icon={<Ionicons name="notifications-outline" size={22} />}
           label="Notifications"
           value={notificationsEnabled}
           onChange={toggleNotifications}
@@ -97,11 +101,13 @@ export default function SettingsScreen() {
           label="Language"
           onPress={() => navigation.navigate("Language")}
         />
+
       </SettingsSection>
 
+      {/* HELP & LEGAL */}
 
-      {/* LEGAL & SUPPORT */}
       <SettingsSection title="Help & Legal">
+
         <SettingsRow
           icon={<Ionicons name="information-circle-outline" size={22} />}
           label="About App"
@@ -132,19 +138,18 @@ export default function SettingsScreen() {
           onPress={() => navigation.navigate("Support")}
         />
 
+        <SettingsRow
+          icon={<Ionicons name="chatbubble-outline" size={22} />}
+          label="Live Chat"
+          onPress={() => navigation.navigate("SupportChat")}
+        />
 
-              <SettingsRow
-        icon={<Ionicons name="chatbubble-outline" size={22} />}
-        label="Live Chat"
-        onPress={() =>
-          navigation.navigate("SupportChat")
-        }
-      />
       </SettingsSection>
 
-
       {/* LOGOUT */}
+
       <SettingsSection title=" ">
+
         <SettingsRow
           icon={
             <Ionicons
@@ -157,7 +162,11 @@ export default function SettingsScreen() {
           danger
           onPress={() => navigation.navigate("Logout")}
         />
+
       </SettingsSection>
+
     </ScrollView>
+
   );
+
 }

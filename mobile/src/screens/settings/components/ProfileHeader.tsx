@@ -1,45 +1,86 @@
-import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
-
-type Props = {
-  name: string;
-  userId: string;
-};
+import { View,Text,Image,StyleSheet } from "react-native";
 
 export default function ProfileHeader({
   name,
   userId,
-}: Props) {
-  return (
-    <View style={styles.container}>
-      <Ionicons
-        name="person-circle-outline"
-        size={60}
-        color="#0ea5a4"
-      />
+  avatar
+}:any){
 
-      <View>
-        <Text style={styles.name}>{name}</Text>
-        <Text style={styles.id}>User ID: {userId}</Text>
-      </View>
+  const initials = name?.charAt(0)?.toUpperCase();
+
+  return(
+
+    <View style={styles.container}>
+
+      {avatar ? (
+
+        <Image
+          source={{uri:avatar}}
+          style={styles.avatar}
+        />
+
+      ) : (
+
+        <View style={styles.initials}>
+          <Text style={styles.initialText}>
+            {initials}
+          </Text>
+        </View>
+
+      )}
+
+      <Text style={styles.name}>
+        {name}
+      </Text>
+
+      <Text style={styles.userId}>
+        {userId}
+      </Text>
+
     </View>
+
   );
+
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    paddingVertical: 18,
-  },
-  name: {
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  id: {
-    fontSize: 12,
-    color: "#666",
-  },
+
+container:{
+alignItems:"center",
+marginBottom:20
+},
+
+avatar:{
+width:80,
+height:80,
+borderRadius:40
+},
+
+initials:{
+width:80,
+height:80,
+borderRadius:40,
+backgroundColor:"#0ea5a4",
+alignItems:"center",
+justifyContent:"center"
+},
+
+initialText:{
+color:"#fff",
+fontSize:28,
+fontWeight:"bold"
+},
+
+name:{
+marginTop:10,
+fontSize:18,
+fontWeight:"700"
+},
+
+userId:{
+fontSize:12,
+color:"#64748b"
+}
+
 });
