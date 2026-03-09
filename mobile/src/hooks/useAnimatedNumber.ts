@@ -1,36 +1,43 @@
 import { useEffect, useRef, useState } from "react";
 
-/**
- * Smooth number animation hook
- * Used for balances, minutes, prices
- */
-export function useAnimatedNumber(target: number, duration = 500) {
-  const [value, setValue] = useState(target);
-  const startValue = useRef(target);
-  const startTime = useRef<number | null>(null);
+export function useAnimatedNumber(target:number){
 
-  useEffect(() => {
-    startValue.current = value;
-    startTime.current = Date.now();
+  const [value,setValue] = useState(target);
+
+  const raf = useRef<number | null>(null);
+
+  useEffect(()=>{
+
+    const start = value;
+    const diff = target - start;
+
+    if(diff === 0) return;
+
+    const duration = 600; // animation time ms
+    const startTime = Date.now();
 
     const animate = () => {
-      const now = Date.now();
-      const elapsed = now - (startTime.current || 0);
-      const progress = Math.min(elapsed / duration, 1);
 
-      const next =
-        startValue.current +
-        (target - startValue.current) * progress;
+      const now = Date.now();
+      const progress = Math.min((now - startTime)/duration,1);
+
+      const next = start + diff * progress;
 
       setValue(next);
 
-      if (progress < 1) {
-        requestAnimationFrame(animate);
+      if(progress < 1){
+        raf.current = requestAnimationFrame(animate);
       }
+
     };
 
-    animate();
-  }, [target]);
+    raf.current = requestAnimationFrame(animate);
+
+    return ()=>{
+      if(raf.current) cancelAnimationFrame(raf.current);
+    };
+
+  },[target]);
 
   return value;
 }

@@ -82,6 +82,7 @@ router.get("/", auth, async (req: any, res) => {
     res.json({
 
       name: user?.name || "User",
+      profileImage: user?.profileImage || null,
 
       balance: wallet.balanceATC || 0,
       staked: wallet.stakedATC || 0,

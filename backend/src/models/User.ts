@@ -7,7 +7,8 @@ export interface IUser extends Document {
 
   name?: string;
   fullName?: string;
-
+  profileImage: String,
+  
   referralCode: string;
   referredBy?: string | null;
 
@@ -62,6 +63,11 @@ const UserSchema = new Schema<IUser>(
     fullName: {
   type: String,
   required: true
+},
+
+profileImage: {
+  type: String,
+  default: null
 },
 
     referralCode: {

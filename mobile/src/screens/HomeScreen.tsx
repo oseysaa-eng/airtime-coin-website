@@ -18,6 +18,7 @@ import API from "../api/api";
 import { useWallet } from "../context/WalletContext";
 import { useAnimatedNumber } from "../hooks/useAnimatedNumber";
 import { subscribeDashboard } from "../utils/events";
+import { getGreeting } from "../utils/greeting";
 
 
 const screenWidth = Dimensions.get("window").width;
@@ -52,6 +53,7 @@ export default function HomeScreen() {
   const [refreshing,setRefreshing] = useState(false);
   const [price,setPrice] = useState<number | null>(null);
   const [hideBalance,setHideBalance] = useState(false);
+  
 
   /* FETCH DASHBOARD */
 
@@ -185,7 +187,7 @@ export default function HomeScreen() {
       }
     >
 
-      <Text style={s.title}>Welcome, {dashboard.name}</Text>
+      <Text style={s.title}>{getGreeting(dashboard.name)}</Text>
 
       {/* BETA */}
 
