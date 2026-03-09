@@ -27,7 +27,7 @@ const ProfileScreen = () => {
 
   const loadProfileFromBackend = async () => {
     try {
-      const res = await API.get("/api/profile");
+      const res = await API.get("/api/user/profile");
       const data = res.data;
 
       setName(data.name);
@@ -77,7 +77,7 @@ const ProfileScreen = () => {
 
   const handleSave = async () => {
     try {
-      await API.put("/api/profile", {
+      await API.put("/api/user/profile", {
         name,
         email,
         phone,

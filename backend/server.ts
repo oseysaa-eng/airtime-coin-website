@@ -60,6 +60,7 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+
 /* ───────────────────────── STATIC FILES ───────────────────────── */
 
 app.use(
@@ -121,6 +122,8 @@ app.get("/", (_req, res) => {
   });
 });
 
+
+
 /* ───────────────────────── REGISTER ROUTES ───────────────────────── */
 
 // ADMIN
@@ -175,6 +178,7 @@ app.use((err: any, req: any, res: any, _next: any) => {
     message: "Internal server error",
   });
 });
+
 
 /* ───────────────────────── CREATE SERVER ───────────────────────── */
 
