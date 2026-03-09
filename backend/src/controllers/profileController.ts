@@ -1,29 +1,64 @@
-import { Response } from 'express';
-import User from '../models/User';
+import { Request, Response } from "express";
+import User from "../models/User";
 
 export const getProfile = async (req: any, res: Response) => {
-  const user = await User.findById(req.user.id).select('-password');
-  if (!user) return res.status(404).json({ message: 'Not found' });
-  res.json(user);
+
+  try {
+
+    const user = await User.findById(req.user.id).select(
+      "name email phone profileImage badges"
+    );
+
+    res.json(user);
+
+  } catch (err) {
+
+    res.status(500).json({
+      message: "Failed to load profile",
+    });
+
+  }
+
 };
 
 export const updateProfile = async (req: any, res: Response) => {
+
   try {
-    const updates: any = {};
-    if (req.body.name) updates.name = req.body.name;
-    if (req.body.phone) updates.phone = req.body.phone;
+
+    const userId = req.user.id;
+
+    const { name, phone } = req.body;
+
+    let profileImage;
 
     if (req.file) {
-      // TODO: move file to R2 / S3 and set URL
-      // simple local file -> serve via /uploads
-      const url = `/uploads/${req.file.filename}`;
-      updates.profileImage = `${process.env.API_BASE_URL || ''}${url}`;
+      profileImage = `/uploads/${req.file.filename}`;
     }
 
-    const user = await User.findByIdAndUpdate(req.user.id, updates, { new: true }).select('-password');
-    res.json(user);
+    const updateData: any = {
+      name,
+      phone,
+    };
+
+    if (profileImage) updateData.profileImage = profileImage;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      updateData,
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      user,
+    });
+
   } catch (err) {
-    console.error('updateProfile', err);
-    res.status(500).json({ message: 'Server error' });
+
+    res.status(500).json({
+      message: "Profile update failed",
+    });
+
   }
+
 };

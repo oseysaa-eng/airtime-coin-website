@@ -12,7 +12,7 @@ export default function EditProfileScreen({ navigation }: any) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await API.get('/user/profile');
+        const res = await API.get("/api/user/profile");
         setName(res.data.name || '');
         setPhone(res.data.phone || '');
         setAvatarUri(res.data.profileImage || null);
@@ -33,7 +33,7 @@ export default function EditProfileScreen({ navigation }: any) {
       form.append('phone', phone);
       if (avatarUri) form.append('avatar', { uri: avatarUri, name: `avatar-${Date.now()}.jpg`, type: 'image/jpeg' } as any);
 
-      const res = await API.put('/user/profile', form, { headers: { 'Content-Type': 'multipart/form-data' }});
+      const res = await API.put('/api/user/profile', form, { headers: { 'Content-Type': 'multipart/form-data' }});
       Alert.alert('Saved', 'Profile updated');
       navigation.goBack();
     } catch (err: any) {
