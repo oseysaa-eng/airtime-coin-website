@@ -40,7 +40,7 @@ const ProfileScreen = () => {
 
     try{
 
-      const res = await API.get("/api/user/profile");
+      const res = await API.get("/api/profile");
 
       const data = res.data;
 
@@ -210,7 +210,7 @@ const ProfileScreen = () => {
       }
 
       await API.put(
-        "/api/user/profile",
+        "/api/profile",
         form,
         { headers:{ "Content-Type":"multipart/form-data" } }
       );
