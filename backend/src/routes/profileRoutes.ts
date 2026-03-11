@@ -19,7 +19,7 @@ const upload = multer({ storage });
 
 /* ROUTES */
 
-router.get("/", authMiddleware, getProfile);
+router.get("/profile", authMiddleware, getProfile);
 
 router.put(
   "/profile",
