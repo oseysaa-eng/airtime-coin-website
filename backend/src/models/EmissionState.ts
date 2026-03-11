@@ -1,17 +1,26 @@
-// src/models/EmissionState.ts
-import mongoose from "mongoose";
 
-const EmissionStateSchema = new mongoose.Schema(
+import mongoose, { Schema, Document } from "mongoose";
+
+export interface IEmissionState extends Document {
+  phase: number;
+  multiplier: number;
+  rate: number;
+  lastHalvingAt: Date;
+}
+
+const EmissionStateSchema = new Schema(
   {
-  phase: { type: Number, default: 0 },          // 0,1,2,3...
-  multiplier: { type: Number, default: 1 },     // 1, 0.5, 0.25...
-  lastHalvingAt: { type: Date, default: Date.now },
+    phase: { type: Number, default: 0 },
+    multiplier: { type: Number, default: 1 },
+    rate: { type: Number, default: 0.0025 },
+    lastHalvingAt: { type: Date, default: Date.now },
     totalMinutesMined: {type: Number,default: 0},
     currentReward: {type: Number, default: 5},
-    
-},
-{ timestamps:true }
+  },
+  { timestamps: true }
 );
 
-export default mongoose.model("EmissionState", EmissionStateSchema);
-
+export default mongoose.model<IEmissionState>(
+  "EmissionState",
+  EmissionStateSchema
+);
