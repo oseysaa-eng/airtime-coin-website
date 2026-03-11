@@ -22,7 +22,7 @@ const upload = multer({ storage });
 router.get("/", authMiddleware, getProfile);
 
 router.put(
-  "/",
+  "/profile",
   authMiddleware,
   upload.single("avatar"),
   updateProfile

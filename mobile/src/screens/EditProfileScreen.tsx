@@ -36,18 +36,14 @@ export default function EditProfileScreen() {
   };
 
   /* PICK IMAGE */
+const pickImage = async()=>{
 
-  const pickImage = async()=>{
-
-    const result =
-      await ImagePicker.launchImageLibraryAsync({
-
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing:true,
-        aspect:[1,1],
-        quality:0.7
-
-      });
+       const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],   // ✅ FIX
+      allowsEditing: true,
+      aspect: [1,1],
+      quality: 0.7
+    });
 
     if(!result.canceled){
 
