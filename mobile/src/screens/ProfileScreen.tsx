@@ -27,7 +27,7 @@ const ProfileScreen = () => {
 
   const loadProfileFromBackend = async () => {
     try {
-      const res = await API.get("/api/user/profile");
+      const res = await API.get("/api/profile");
       const data = res.data;
 
       setName(data.name);
@@ -60,9 +60,11 @@ const ProfileScreen = () => {
     if (img) setProfileImage(img);
   };
 
+
+  
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaType.Images,
       quality: 0.7,
       allowsEditing: true,
       aspect: [1, 1],
@@ -77,7 +79,7 @@ const ProfileScreen = () => {
 
   const handleSave = async () => {
     try {
-      await API.put("/api/user/profile", {
+      await API.put("/api/profile", {
         name,
         email,
         phone,

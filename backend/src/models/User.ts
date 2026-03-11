@@ -8,6 +8,7 @@ export interface IUser extends Document {
   name?: string;
   fullName?: string;
   profileImage: String,
+  mediaTypes: String,
   
   referralCode: string;
   referredBy?: string | null;
@@ -19,6 +20,7 @@ export interface IUser extends Document {
 
   totalEarnings: number;
   totalMinutes: number;
+  
 
   pushTokens: string[];
 
@@ -140,3 +142,4 @@ profileImage: {
 
 export default mongoose.models.User ||
 mongoose.model<IUser>("User", UserSchema);
+
