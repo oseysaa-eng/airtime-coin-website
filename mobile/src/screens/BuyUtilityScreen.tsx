@@ -33,17 +33,27 @@ export default function BuyUtilityScreen() {
     loadData();
   }, []);
 
-  const loadData = async () => {
-    try {
-      const wallet = await api.get("/wallet");
-      const rateRes = await api.get("/utility/rate");
 
-      setBalance(wallet.data.balanceATC);
-      setRate(rateRes.data.rate);
-    } catch {
-      Alert.alert("Error", "Failed to load utility data");
-    }
-  };
+  const loadData = async () => {
+  try {
+
+    const walletRes = await api.get("/api/wallet");
+    const rateRes = await api.get("/api/utility/rate");
+
+    setBalance(walletRes.data.balanceATC || 0);
+    setRate(rateRes.data.rate || 0);
+
+  } catch (err: any) {
+
+    console.log("UTILITY LOAD ERROR:", err?.response?.data || err.message);
+
+    Alert.alert(
+      "Error",
+      err?.response?.data?.message || "Failed to load utility data"
+    );
+
+  }
+};
 
   // ───────────────────────── PURCHASE
   const buyUtility = async () => {
@@ -109,7 +119,7 @@ export default function BuyUtilityScreen() {
       </Text>
 
       <Text style={{ marginTop: 6, color: "#555" }}>
-        Balance: {balance.toFixed(6)} ATC
+        ATC Balance: {balance.toFixed(6)} ATC
       </Text>
 
       <Text style={{ marginTop: 4, color: "#555" }}>

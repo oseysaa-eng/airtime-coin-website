@@ -112,14 +112,18 @@ export default function HomeScreen() {
   return unsub;
 }, [fetchDashboard]);
 
+
   /* SAFE VALUES */
 
-  const atcValue = wallet?.atc ?? dashboard?.balance ?? 0;
+
+  const atcValue = dashboard?.balance ?? wallet?.atc ?? 0;
   const minutesValue = dashboard?.totalMinutes ?? wallet?.minutes ?? 0;
 
 
   const animatedATC = useAnimatedNumber(atcValue);
   const animatedMinutes = useAnimatedNumber(minutesValue);
+
+  
 
   /* REFRESH */
 
@@ -274,6 +278,8 @@ export default function HomeScreen() {
         </Text>
 
       </TouchableOpacity>
+
+      
 
       {/* DAILY PROGRESS */}
 
