@@ -87,7 +87,7 @@ export default function BuyUtilityScreen() {
     setLoading(true);
 
     try {
-      const res = await api.post("/utility/purchase", {
+      const res = await api.post("/api/utility/purchase", {
         utility,
         amountATC: value,
         phone,

@@ -15,28 +15,64 @@ import { payDSTV } from "../services/utility/dstvProvider";
 
 const router = express.Router();
 
+
+/**
+ * GET /api/utility/rate
+ * Returns ATC → GHS conversion rate
+ */
+router.get("/rate", auth, async (req, res) => {
+  try {
+
+    const pricing =
+      (await UtilityPricing.findOne()) ||
+      (await UtilityPricing.create({
+        currentRate: 10   // default example: 1 ATC = ₵10 utility value
+      }));
+
+    res.json({
+      rate: pricing.currentRate
+    });
+
+  } catch (err) {
+
+    console.error("UTILITY RATE ERROR:", err);
+
+    res.status(500).json({
+      message: "Failed to fetch utility rate"
+    });
+
+  }
+});
+
+
 /**
  * POST /api/utility/purchase
  */
 
 router.post("/purchase", auth, verifyPin, async (req: any, res) => {
   try {
+
     const userId = req.user.id;
     const { utility, amountATC, phone, network, accountId } = req.body;
 
     if (!utility || !amountATC || amountATC <= 0) {
-      return res.status(400).json({ message: "Invalid parameters" });
+      return res.status(400).json({
+        message: "Invalid parameters"
+      });
     }
 
-    // ───────────────────────── SYSTEM CHECK
+    // ───────── SYSTEM CHECK
+
     const settings = await SystemSettings.findOne();
+
     if (settings?.incidentMode?.active) {
       return res.status(403).json({
         message: "Utility purchases temporarily disabled",
       });
     }
 
-    // ───────────────────────── TRUST
+    // ───────── TRUST CHECK
+
     const trust =
       (await UserTrust.findOne({ userId })) ||
       (await UserTrust.create({ userId }));
@@ -47,71 +83,83 @@ router.post("/purchase", auth, verifyPin, async (req: any, res) => {
       });
     }
 
-    // ───────────────────────── WALLET
+    // ───────── WALLET
+
     const wallet = await Wallet.findOne({ userId });
+
     if (!wallet || wallet.balanceATC < amountATC) {
-      return res.status(400).json({ message: "Insufficient ATC" });
+      return res.status(400).json({
+        message: "Insufficient ATC"
+      });
     }
 
-    // ───────────────────────── POOL
+    // ───────── UTILITY POOL
+
     const pool = await UtilityPool.findOne({ utility });
+
     if (!pool || pool.paused) {
       return res.status(403).json({
-        message: `${utility} service unavailable`,
+        message: `${utility} service unavailable`
       });
     }
 
     if (pool.spentTodayATC + amountATC > pool.dailyLimitATC) {
       return res.status(403).json({
-        message: "Daily utility limit reached",
+        message: "Daily utility limit reached"
       });
     }
 
-    // ───────────────────────── PRICING ENGINE
+    // ───────── PRICING
+
     const pricing =
       (await UtilityPricing.findOne()) ||
       (await UtilityPricing.create({}));
 
     const rate = pricing.currentRate;
 
-    // ───────────────────────── CALL PROVIDER
+    // ───────── PROVIDER CALL
+
     let result;
+
     switch (utility) {
+
       case "AIRTIME":
         result = await sendAirtime({ phone, amountATC, rate });
         break;
+
       case "DATA":
         result = await sendData({ phone, network, amountATC, rate });
         break;
+
       case "DSTV":
         result = await payDSTV({ accountId, amountATC, rate });
         break;
+
       default:
-        return res.status(400).json({ message: "Unsupported utility" });
+        return res.status(400).json({
+          message: "Unsupported utility"
+        });
+
     }
 
     if (!result?.success) {
-      return res.status(500).json({ message: "Provider failed" });
+      return res.status(500).json({
+        message: "Provider failed"
+      });
     }
 
-    // ───────────────────────── FEE SPLIT
+    // ───────── FEE SPLIT
+
     const treasury =
-      (await Treasury.findOne()) || (await Treasury.create({}));
+      (await Treasury.findOne()) ||
+      (await Treasury.create({}));
 
     const burnPct = settings?.utilityFees?.burnPercent || 0;
     const treasuryPct = settings?.utilityFees?.treasuryPercent || 0;
 
-    if (burnPct + treasuryPct > 100) {
-      return res.status(500).json({
-        message: "Invalid fee configuration",
-      });
-    }
-
     const burnATC = +(amountATC * burnPct / 100).toFixed(6);
     const treasuryATC = +(amountATC * treasuryPct / 100).toFixed(6);
     const poolATC = +(amountATC - burnATC - treasuryATC).toFixed(6);
-
-    // ───────────────────────── APPLY MOVEMENT
 
     // 🔥 Burn
     treasury.totalBurnedATC += burnATC;
@@ -120,22 +168,25 @@ router.post("/purchase", auth, verifyPin, async (req: any, res) => {
     treasury.balanceATC += treasuryATC;
     await treasury.save();
 
-    // ⚙ Pool usage
+    // ⚙ Pool
     if (pool.balanceATC < poolATC) {
       return res.status(403).json({
-        message: "Utility pool depleted",
+        message: "Utility pool depleted"
       });
     }
 
     pool.balanceATC -= poolATC;
     pool.spentTodayATC += poolATC;
+
     await pool.save();
 
     // 💳 Wallet
+
     wallet.balanceATC -= amountATC;
     await wallet.save();
 
-    // ───────────────────────── TRANSACTION
+    // ───────── TRANSACTION
+
     await Transaction.create({
       userId,
       type: "UTILITY",
@@ -156,17 +207,19 @@ router.post("/purchase", auth, verifyPin, async (req: any, res) => {
       success: true,
       utility,
       atcSpent: amountATC,
-      utilityValue: result.value,
+      value: result.value,
       rate,
-      breakdown: {
-        burn: burnATC,
-        treasury: treasuryATC,
-        pool: poolATC,
-      },
+      reference: result.meta?.reference
     });
+
   } catch (err) {
+
     console.error("UTILITY ERROR:", err);
-    res.status(500).json({ message: "Utility processing failed" });
+
+    res.status(500).json({
+      message: "Utility processing failed"
+    });
+
   }
 });
 
