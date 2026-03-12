@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import API from "../api/api";
+import { emitDashboardUpdate } from "../utils/events";
 
 
 export default function ConvertScreen() {
@@ -17,10 +18,6 @@ export default function ConvertScreen() {
   const [rate, setRate] = useState(0.0025);
 
 
-  
-
-
-  
 
   useEffect(() => {
     loadWallet();
@@ -46,9 +43,15 @@ export default function ConvertScreen() {
       const res = await API.post("/api/convert", { minutes });
 
       Alert.alert(
-        "Success 🎉",
-        `${res.data.atcReceived.toFixed(4)} ATC credited`
-      );
+  "Success 🎉",
+  `${res.data.atcReceived.toFixed(4)} ATC credited`
+);
+
+setMinutes(0);
+
+emitDashboardUpdate(); // 🔥 notify HomeScreen
+
+loadWallet();
 
       setMinutes(0);
       loadWallet();
