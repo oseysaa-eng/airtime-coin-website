@@ -24,9 +24,10 @@ export default function UsersPage() {
 
       const res = await adminApi.get("/users");
 
-      setUsers(res.data?.users || []);
+      setUsers(Array.isArray(res.data?.users) ? res.data.users : []);
     } catch (err: any) {
       console.error("Failed to load users", err);
+
       setError(
         err?.response?.data?.message || "Failed to load users"
       );
@@ -35,6 +36,8 @@ export default function UsersPage() {
     }
   };
 
+
+  
   useEffect(() => {
     load();
   }, []);
@@ -44,7 +47,22 @@ export default function UsersPage() {
   ───────────────────────────── */
   const toggleSelect = (id: string, checked: boolean) => {
     setSelected(prev =>
-      checked ? [...prev, id] : prev.filter(x => x !== id)
+      checked
+        ? [...prev, id]
+        : prev.filter(x => x !== id)
+    );
+  };
+
+  /* ─────────────────────────────
+     USER UPDATED
+  ───────────────────────────── */
+  const handleUserUpdated = (updatedUser: any) => {
+    setActiveUser(null);
+
+    setUsers(prev =>
+      prev.map(u =>
+        u._id === updatedUser._id ? updatedUser : u
+      )
     );
   };
 
@@ -105,12 +123,11 @@ export default function UsersPage() {
         <UserDrawer
           user={activeUser}
           onClose={() => setActiveUser(null)}
-          onUpdated={() => {
-            setActiveUser(null);
-            load();
-          }}
+          onUpdated={handleUserUpdated}
         />
       )}
+
+      
 
       {/* Bulk Actions */}
       <BulkActionsBar
