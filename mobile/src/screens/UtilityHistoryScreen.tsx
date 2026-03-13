@@ -31,7 +31,7 @@ export default function UtilityHistoryScreen() {
 
   const loadHistory = async () => {
     try {
-      const res = await api.get("/utility/history");
+      const res = await api.get("/api/utility/history");
       setTxs(res.data);
     } catch (e) {
       console.log("History error", e);
