@@ -12,58 +12,97 @@ import TrustSuggestion from "@/components/admin/TrustSuggestion";
 type Props = {
   user: any;
   onClose: () => void;
-  onUpdated: () => void;
+  onUpdated: (updatedUser: any) => void;
 };
 
-export default function UserDrawer({ user, onClose, onUpdated }: Props) {
+export default function UserDrawer({
+  user,
+  onClose,
+  onUpdated,
+}: Props) {
+
   const [trust, setTrust] = useState<number>(user?.trustScore ?? 100);
   const [saving, setSaving] = useState(false);
   const [timeline, setTimeline] = useState<any[]>([]);
 
-  // Sync trust when user changes
+  /* ─────────────────────────
+     SYNC TRUST WHEN USER CHANGES
+  ───────────────────────── */
   useEffect(() => {
     if (user) setTrust(user.trustScore ?? 100);
   }, [user]);
 
-  // Load fraud timeline
-  useEffect(() => {
-    if (!user?._id) return;
+  /* ─────────────────────────
+     LOAD FRAUD TIMELINE
+  ───────────────────────── */
+  const loadTimeline = async () => {
+    try {
+      const res = await adminApi.get(
+        `/users/${user._id}/fraud-timeline`
+      );
+      setTimeline(res.data || []);
+    } catch {
+      setTimeline([]);
+    }
+  };
 
-    adminApi
-      .get(`/users/${user._id}/fraud-timeline`)
-      .then(res => setTimeline(res.data))
-      .catch(() => setTimeline([]));
+  useEffect(() => {
+    if (user?._id) loadTimeline();
   }, [user?._id]);
 
-  // ESC to close
+  /* ─────────────────────────
+     ESC KEY CLOSE
+  ───────────────────────── */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
+
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () =>
+      window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   if (!user) return null;
 
+  /* ─────────────────────────
+     STATUS
+  ───────────────────────── */
+
   const isPaused =
-    user.pausedUntil && new Date(user.pausedUntil) > new Date();
+    user.pausedUntil &&
+    new Date(user.pausedUntil) > new Date();
 
   const trustLabel =
-    trust < 40 ? "BLOCKED" :
-    trust < 60 ? "LIMITED" :
-    trust < 80 ? "REDUCED" :
-    "GOOD";
+    trust < 40
+      ? "BLOCKED"
+      : trust < 60
+      ? "LIMITED"
+      : trust < 80
+      ? "REDUCED"
+      : "GOOD";
 
   const trustColor =
-    trust < 40 ? "bg-red-600" :
-    trust < 60 ? "bg-orange-500" :
-    trust < 80 ? "bg-yellow-500" :
-    "bg-green-600";
+    trust < 40
+      ? "bg-red-600"
+      : trust < 60
+      ? "bg-orange-500"
+      : trust < 80
+      ? "bg-yellow-500"
+      : "bg-green-600";
+
+  /* ─────────────────────────
+     SAVE TRUST
+  ───────────────────────── */
 
   const saveTrust = async () => {
+
+    if (saving) return;
+
     setSaving(true);
+
     try {
+
       await adminApi.post("/users/bulk", {
         userIds: [user._id],
         action: "SET_TRUST",
@@ -71,29 +110,69 @@ export default function UserDrawer({ user, onClose, onUpdated }: Props) {
         reason: "Manual admin adjustment",
       });
 
-      onUpdated();
+      /* FETCH UPDATED USER */
+      const res = await adminApi.get(
+        `/users/${user._id}`
+      );
+
+      const updatedUser = res.data;
+
+      onUpdated(updatedUser);
+
+      loadTimeline();
+
       onClose();
+
+    } catch (err) {
+
+      console.error("Trust update failed", err);
+
     } finally {
+
       setSaving(false);
+
     }
   };
 
+  /* ─────────────────────────
+     UI
+  ───────────────────────── */
+
   return (
     <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
-      <div className="flex-1 bg-black/40" onClick={onClose} />
 
-      {/* Drawer */}
+      {/* BACKDROP */}
+      <div
+        className="flex-1 bg-black/40"
+        onClick={onClose}
+      />
+
+      {/* DRAWER */}
       <div className="w-[420px] bg-white p-6 shadow-xl overflow-y-auto">
-        <h2 className="text-xl font-bold mb-4">User Details</h2>
+
+        <h2 className="text-xl font-bold mb-4">
+          User Details
+        </h2>
 
         {/* BASIC INFO */}
         <div className="space-y-2 text-sm">
-          <div><b>Email:</b> {user.email}</div>
-          <div><b>KYC:</b> {user.kycStatus}</div>
+          <div>
+            <b>Email:</b> {user.email}
+          </div>
+
+          <div>
+            <b>KYC:</b> {user.kycStatus}
+          </div>
+
           <div>
             <b>Status:</b>{" "}
-            <span className={isPaused ? "text-red-600" : "text-green-600"}>
+            <span
+              className={
+                isPaused
+                  ? "text-red-600"
+                  : "text-green-600"
+              }
+            >
               {isPaused ? "Paused" : "Active"}
             </span>
           </div>
@@ -101,8 +180,12 @@ export default function UserDrawer({ user, onClose, onUpdated }: Props) {
 
         {/* TRUST CONTROL */}
         <div className="mt-8">
+
           <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold">Trust Score</h3>
+            <h3 className="font-semibold">
+              Trust Score
+            </h3>
+
             <span
               className={clsx(
                 "px-3 py-1 rounded-full text-white text-xs",
@@ -113,13 +196,16 @@ export default function UserDrawer({ user, onClose, onUpdated }: Props) {
             </span>
           </div>
 
+          {/* SLIDER */}
           <input
             type="range"
             min={0}
             max={100}
             value={trust}
             disabled={isPaused}
-            onChange={e => setTrust(Number(e.target.value))}
+            onChange={(e) =>
+              setTrust(Number(e.target.value))
+            }
             className="w-full"
           />
 
@@ -130,7 +216,9 @@ export default function UserDrawer({ user, onClose, onUpdated }: Props) {
 
           {/* PRESETS */}
           <div className="flex gap-2 mt-4">
-            {[40, 60, 80, 100].map(v => (
+
+            {[40, 60, 80, 100].map((v) => (
+
               <button
                 key={v}
                 onClick={() => setTrust(v)}
@@ -139,15 +227,28 @@ export default function UserDrawer({ user, onClose, onUpdated }: Props) {
               >
                 {v}
               </button>
+
             ))}
+
           </div>
 
           {/* FRAUD + CONTROLS */}
           <div className="mt-8 space-y-6">
+
             <FraudIndicators user={user} />
+
             <TrustSuggestion user={user} />
+
             <FraudTimeline events={timeline} />
-            <PauseControls userId={user._id} onDone={onUpdated} />
+
+            <PauseControls
+              userId={user._id}
+              onDone={() => {
+                onUpdated(user);
+                onClose();
+              }}
+            />
+
           </div>
 
           {/* SAVE */}
@@ -158,6 +259,7 @@ export default function UserDrawer({ user, onClose, onUpdated }: Props) {
           >
             {saving ? "Saving…" : "Save Trust"}
           </button>
+
         </div>
       </div>
     </div>
