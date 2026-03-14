@@ -23,6 +23,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
 
+
+
+
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,7 +46,6 @@ export default function LoginScreen({ navigation }: any) {
       const compatible = await LocalAuthentication.hasHardwareAsync();
       const enrolled = await LocalAuthentication.isEnrolledAsync();
       setBiometricAvailable(compatible && enrolled);
-
       const fp = await getDeviceFingerprint();
       setFingerprint(fp);
     })();
@@ -81,11 +83,12 @@ const handleLogin = async () => {
 
   try {
     setLoading(true);
-
+ const device = getDeviceFingerprint();
     const res = await API.post("/api/auth/login", {
       email,
       password,
       fingerprint,
+      device,
     });
 
     if (!res.data?.token) {

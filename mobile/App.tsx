@@ -14,6 +14,8 @@ import { initializeI18n } from './src/i18n/index';
 import { registerForPushNotificationsAsync } from "./src/services/pushClient";
 import { connectSocket, joinUserRoom, onMinutesCredit } from "./src/services/realtime";
 import { useUserStore } from "./src/store/useUserStore";
+import { checkEmulator } from "./src/utils/securityCheck";
+
 
 ExpoSplash.preventAutoHideAsync(); // ONCE, at top level
 
@@ -114,6 +116,12 @@ useEffect(() => {
 
   init();
 }, []);
+
+
+useEffect(() => {
+  checkEmulator();
+}, []);
+
 
   useEffect(() => {
     const init = async () => {

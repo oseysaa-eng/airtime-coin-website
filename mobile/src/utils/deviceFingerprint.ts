@@ -20,3 +20,5 @@ export async function getDeviceFingerprint() {
 
   return hash;
 }
+
+
