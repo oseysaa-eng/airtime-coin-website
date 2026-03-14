@@ -15,48 +15,76 @@ const router = express.Router();
  * ======================================================
  */
 
+
 router.get("/", adminAuth, async (_req, res) => {
   try {
 
-    const users = await User.find().select(
-      "email createdAt pausedUntil pauseReason kycStatus"
-    );
+    const users = await User.aggregate([
+      {
+        $lookup: {
+          from: "wallets",
+          localField: "_id",
+          foreignField: "userId",
+          as: "wallet"
+        }
+      },
+      {
+        $lookup: {
+          from: "usertrusts",
+          localField: "_id",
+          foreignField: "userId",
+          as: "trust"
+        }
+      },
+      {
+        $addFields: {
 
-    const enriched = await Promise.all(
-      users.map(async (u) => {
+          wallet: { $arrayElemAt: ["$wallet", 0] },
+          trust: { $arrayElemAt: ["$trust", 0] }
 
-        const wallet = await Wallet.findOne({ userId: u._id });
+        }
+      },
+      {
+        $project: {
 
-        const trust = await UserTrust.findOneAndUpdate(
-          { userId: u._id },
-          { $setOnInsert: { userId: u._id, score: 100 } },
-          { new: true, upsert: true }
-        );
+          email: 1,
+          createdAt: 1,
+          pausedUntil: 1,
+          pauseReason: 1,
+          kycStatus: { $ifNull: ["$kycStatus", "pending"] },
 
-        return {
-          _id: u._id,
-          email: u.email,
-          createdAt: u.createdAt,
-          pausedUntil: u.pausedUntil,
-          pauseReason: u.pauseReason,
-          kycStatus: u.kycStatus ?? "pending",
+          trustScore: { $ifNull: ["$trust.score", 100] },
 
-          trustScore: trust.score,
-          trustStatus:
-            trust.score < 40
-              ? "blocked"
-              : trust.score < 60
-              ? "limited"
-              : trust.score < 80
-              ? "reduced"
-              : "good",
+          totalMinutes: { $ifNull: ["$wallet.totalMinutes", 0] },
+          balanceATC: { $ifNull: ["$wallet.balanceATC", 0] }
 
-          totalMinutes: wallet?.totalMinutes ?? 0,
-          balanceATC: wallet?.balanceATC ?? 0,
-        };
+        }
+      },
+      {
+        $sort: { createdAt: -1 }
+      }
+    ]);
 
-      })
-    );
+    const enriched = users.map(u => {
+
+      const trustScore = u.trustScore ?? 100;
+
+      return {
+
+        ...u,
+
+        trustStatus:
+          trustScore < 40
+            ? "blocked"
+            : trustScore < 60
+            ? "limited"
+            : trustScore < 80
+            ? "reduced"
+            : "good"
+
+      };
+
+    });
 
     res.json({
       success: true,
