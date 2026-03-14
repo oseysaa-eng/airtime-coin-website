@@ -12,6 +12,7 @@ import SystemSettings from "./src/models/SystemSettings";
 import { setupSocket } from "./src/sockets/socket";
 import { setupSupportSocket } from "./src/sockets/supportSocket";
 import { registerAdminEmitter } from "./src/utils/adminEmitter";
+import { apiLimiter } from "./src/middleware/rateLimiter";
 
 /* ───────────────────────── LOAD ENV ───────────────────────── */
 
@@ -59,6 +60,7 @@ app.use(
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use("/api", apiLimiter);
 
 
 /* ───────────────────────── STATIC FILES ───────────────────────── */

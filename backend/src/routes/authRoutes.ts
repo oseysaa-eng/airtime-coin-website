@@ -7,6 +7,7 @@ import {
 } from "../controllers/authController";
 
 import authMiddleware from "../middleware/authMiddleware";
+import { trackDevice } from "../middleware/trackDevice";
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ const router = express.Router();
  */
 router.post(
   "/register",
-  registerUser
+  registerUser, trackDevice
 );
 
 /**
@@ -23,7 +24,7 @@ router.post(
  */
 router.post(
   "/login",
-  loginUser
+  loginUser, trackDevice
 );
 
 /**
@@ -36,3 +37,4 @@ router.get(
 );
 
 export default router;
+
