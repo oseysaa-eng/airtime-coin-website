@@ -14,14 +14,17 @@ const router = express.Router();
  * List all users with wallet + trust info
  * ======================================================
  */
+
 router.get("/", adminAuth, async (_req, res) => {
   try {
+
     const users = await User.find().select(
       "email createdAt pausedUntil pauseReason kycStatus"
     );
 
     const enriched = await Promise.all(
       users.map(async (u) => {
+
         const wallet = await Wallet.findOne({ userId: u._id });
 
         const trust = await UserTrust.findOneAndUpdate(
@@ -51,13 +54,23 @@ router.get("/", adminAuth, async (_req, res) => {
           totalMinutes: wallet?.totalMinutes ?? 0,
           balanceATC: wallet?.balanceATC ?? 0,
         };
+
       })
     );
 
-    res.json(enriched);
+    res.json({
+      success: true,
+      users: enriched
+    });
+
   } catch (err) {
+
     console.error("ADMIN USERS LIST ERROR:", err);
-    res.status(500).json({ message: "Failed to load users" });
+
+    res.status(500).json({
+      message: "Failed to load users"
+    });
+
   }
 });
 
