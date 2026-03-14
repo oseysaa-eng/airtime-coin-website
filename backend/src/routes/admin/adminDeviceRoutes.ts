@@ -1,10 +1,8 @@
 import express from "express";
 import adminAuth from "../../middleware/adminAuth";
-import UserDevice from "../../models/UserDevice";
+import Device from "../../models/Device";
 import UserTrust from "../../models/UserTrust";
 import { emitAdminEvent } from "../../sockets/socket";
-import Device from "../../models/Device";
-import User from "../../models/User";
 
 const router = express.Router();
 
@@ -16,26 +14,26 @@ router.get("/summary", adminAuth, async (req, res) => {
 
   try {
 
-    const total = await UserDevice.countDocuments();
+    const total = await Device.countDocuments();
 
-    const trusted = await UserDevice.countDocuments({
+    const trusted = await Device.countDocuments({
       trusted: true
     });
 
-    const flagged = await UserDevice.countDocuments({
+    const flagged = await Device.countDocuments({
       flagged: true
     });
 
-    const blocked = await UserDevice.countDocuments({
+    const blocked = await Device.countDocuments({
       blocked: true
     });
 
-    const active = await UserDevice.countDocuments({
-      lastSeen: {
+    const active = await Device.countDocuments({
+      lastSeenAt: {
         $gte: new Date(
           Date.now() - 24 * 60 * 60 * 1000
-        ),
-      },
+        )
+      }
     });
 
     res.json({
@@ -43,12 +41,12 @@ router.get("/summary", adminAuth, async (req, res) => {
       trusted,
       flagged,
       blocked,
-      active,
+      active
     });
 
   } catch (err) {
 
-    console.error(err);
+    console.error("DEVICE SUMMARY ERROR:", err);
 
     res.status(500).json({
       message: "Failed to load summary"
@@ -59,10 +57,11 @@ router.get("/summary", adminAuth, async (req, res) => {
 });
 
 /* ============================================
-   GET DEVICES
+   GET DEVICES (OPTIMIZED)
 ============================================ */
 
 router.get("/", adminAuth, async (req: any, res) => {
+
   try {
 
     const page = Number(req.query.page) || 1;
@@ -72,47 +71,74 @@ router.get("/", adminAuth, async (req: any, res) => {
     const search = req.query.search || "";
     const status = req.query.status || "";
 
-    const query: any = {};
-
-    /* SEARCH */
+    const match: any = {};
 
     if (search) {
-      query.model = { $regex: search, $options: "i" };
+
+      match.model = {
+        $regex: search,
+        $options: "i"
+      };
+
     }
 
-    /* STATUS FILTER */
+    if (status === "blocked") match.blocked = true;
+    if (status === "flagged") match.flagged = true;
+    if (status === "trusted") match.trusted = true;
 
-    if (status === "blocked") query.blocked = true;
-    if (status === "flagged") query.flagged = true;
-    if (status === "trusted") query.trusted = true;
+    const devices = await Device.aggregate([
 
-    const devices = await Device.find(query)
-      .sort({ lastSeenAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
+      { $match: match },
 
-    /* ATTACH USER INFO */
+      {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          as: "user"
+        }
+      },
 
-    const enriched = await Promise.all(
-      devices.map(async (d) => {
+      {
+        $addFields: {
+          user: { $arrayElemAt: ["$user", 0] }
+        }
+      },
 
-        const user = await User.findById(d.userId)
-          .select("email");
+      {
+        $project: {
 
-        return {
-          ...d,
-          userEmail: user?.email || "unknown"
-        };
+          deviceName: 1,
+          brand: 1,
+          model: 1,
+          os: 1,
+          osVersion: 1,
 
-      })
-    );
+          trusted: 1,
+          flagged: 1,
+          blocked: 1,
 
-    const total = await Device.countDocuments(query);
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+
+          userEmail: "$user.email"
+
+        }
+      },
+
+      { $sort: { lastSeenAt: -1 } },
+
+      { $skip: skip },
+
+      { $limit: limit }
+
+    ]);
+
+    const total = await Device.countDocuments(match);
 
     res.json({
 
-      devices: enriched,
+      devices,
 
       pagination: {
         page,
@@ -131,6 +157,7 @@ router.get("/", adminAuth, async (req: any, res) => {
     });
 
   }
+
 });
 
 /* ============================================
@@ -139,13 +166,12 @@ router.get("/", adminAuth, async (req: any, res) => {
 
 router.post("/:id/trust", adminAuth, async (req, res) => {
 
-  await UserDevice.findByIdAndUpdate(
+  await Device.findByIdAndUpdate(
     req.params.id,
     {
       trusted: true,
       flagged: false,
-      blocked: false,
-      riskScore: 0,
+      blocked: false
     }
   );
 
@@ -163,11 +189,11 @@ router.post("/:id/trust", adminAuth, async (req, res) => {
 
 router.post("/:id/flag", adminAuth, async (req, res) => {
 
-  await UserDevice.findByIdAndUpdate(
+  await Device.findByIdAndUpdate(
     req.params.id,
     {
       flagged: true,
-      trusted: false,
+      trusted: false
     }
   );
 
@@ -185,13 +211,12 @@ router.post("/:id/flag", adminAuth, async (req, res) => {
 
 router.post("/:id/block", adminAuth, async (req, res) => {
 
-  await UserDevice.findByIdAndUpdate(
+  await Device.findByIdAndUpdate(
     req.params.id,
     {
       blocked: true,
       flagged: true,
-      trusted: false,
-      riskScore: 100,
+      trusted: false
     }
   );
 
@@ -204,7 +229,7 @@ router.post("/:id/block", adminAuth, async (req, res) => {
 });
 
 /* ============================================
-   RESET TRUST
+   RESET USER TRUST
 ============================================ */
 
 router.post(
