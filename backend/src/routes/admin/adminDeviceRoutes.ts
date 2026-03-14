@@ -3,6 +3,8 @@ import adminAuth from "../../middleware/adminAuth";
 import UserDevice from "../../models/UserDevice";
 import UserTrust from "../../models/UserTrust";
 import { emitAdminEvent } from "../../sockets/socket";
+import Device from "../../models/Device";
+import User from "../../models/User";
 
 const router = express.Router();
 
@@ -60,27 +62,75 @@ router.get("/summary", adminAuth, async (req, res) => {
    GET DEVICES
 ============================================ */
 
-router.get("/", adminAuth, async (req, res) => {
-
+router.get("/", adminAuth, async (req: any, res) => {
   try {
 
-    const devices = await UserDevice.find()
-      .populate("userId", "email")
-      .sort({ lastSeen: -1 })
+    const page = Number(req.query.page) || 1;
+    const limit = 20;
+    const skip = (page - 1) * limit;
+
+    const search = req.query.search || "";
+    const status = req.query.status || "";
+
+    const query: any = {};
+
+    /* SEARCH */
+
+    if (search) {
+      query.model = { $regex: search, $options: "i" };
+    }
+
+    /* STATUS FILTER */
+
+    if (status === "blocked") query.blocked = true;
+    if (status === "flagged") query.flagged = true;
+    if (status === "trusted") query.trusted = true;
+
+    const devices = await Device.find(query)
+      .sort({ lastSeenAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .lean();
 
+    /* ATTACH USER INFO */
+
+    const enriched = await Promise.all(
+      devices.map(async (d) => {
+
+        const user = await User.findById(d.userId)
+          .select("email");
+
+        return {
+          ...d,
+          userEmail: user?.email || "unknown"
+        };
+
+      })
+    );
+
+    const total = await Device.countDocuments(query);
+
     res.json({
-      devices
+
+      devices: enriched,
+
+      pagination: {
+        page,
+        pages: Math.ceil(total / limit),
+        total
+      }
+
     });
 
-  } catch {
+  } catch (err) {
+
+    console.error("ADMIN DEVICE LIST ERROR:", err);
 
     res.status(500).json({
       message: "Failed to load devices"
     });
 
   }
-
 });
 
 /* ============================================
