@@ -1,6 +1,6 @@
 import express from "express";
 import adminAuth from "../../middleware/adminAuth";
-import UserDevice from "../../models/UserDevice";
+import Device from "../../models/Device";
 import UserTrust from "../../models/UserTrust";
 import { emitAdminEvent } from "../../sockets/socket";
 
@@ -14,26 +14,26 @@ router.get("/summary", adminAuth, async (req, res) => {
 
   try {
 
-    const total = await UserDevice.countDocuments();
+    const total = await Device.countDocuments();
 
-    const trusted = await UserDevice.countDocuments({
+    const trusted = await Device.countDocuments({
       trusted: true
     });
 
-    const flagged = await UserDevice.countDocuments({
+    const flagged = await Device.countDocuments({
       flagged: true
     });
 
-    const blocked = await UserDevice.countDocuments({
+    const blocked = await Device.countDocuments({
       blocked: true
     });
 
-    const active = await UserDevice.countDocuments({
-      lastSeen: {
+    const active = await Device.countDocuments({
+      lastSeenAt: {
         $gte: new Date(
           Date.now() - 24 * 60 * 60 * 1000
-        ),
-      },
+        )
+      }
     });
 
     res.json({
@@ -41,12 +41,12 @@ router.get("/summary", adminAuth, async (req, res) => {
       trusted,
       flagged,
       blocked,
-      active,
+      active
     });
 
   } catch (err) {
 
-    console.error(err);
+    console.error("DEVICE SUMMARY ERROR:", err);
 
     res.status(500).json({
       message: "Failed to load summary"
@@ -57,23 +57,100 @@ router.get("/summary", adminAuth, async (req, res) => {
 });
 
 /* ============================================
-   GET DEVICES
+   GET DEVICES (OPTIMIZED)
 ============================================ */
 
-router.get("/", adminAuth, async (req, res) => {
+router.get("/", adminAuth, async (req: any, res) => {
 
   try {
 
-    const devices = await UserDevice.find()
-      .populate("userId", "email")
-      .sort({ lastSeen: -1 })
-      .lean();
+    const page = Number(req.query.page) || 1;
+    const limit = 20;
+    const skip = (page - 1) * limit;
+
+    const search = req.query.search || "";
+    const status = req.query.status || "";
+
+    const match: any = {};
+
+    if (search) {
+
+      match.model = {
+        $regex: search,
+        $options: "i"
+      };
+
+    }
+
+    if (status === "blocked") match.blocked = true;
+    if (status === "flagged") match.flagged = true;
+    if (status === "trusted") match.trusted = true;
+
+    const devices = await Device.aggregate([
+
+      { $match: match },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          as: "user"
+        }
+      },
+
+      {
+        $addFields: {
+          user: { $arrayElemAt: ["$user", 0] }
+        }
+      },
+
+      {
+        $project: {
+
+          deviceName: 1,
+          brand: 1,
+          model: 1,
+          os: 1,
+          osVersion: 1,
+
+          trusted: 1,
+          flagged: 1,
+          blocked: 1,
+
+          firstSeenAt: 1,
+          lastSeenAt: 1,
+
+          userEmail: "$user.email"
+
+        }
+      },
+
+      { $sort: { lastSeenAt: -1 } },
+
+      { $skip: skip },
+
+      { $limit: limit }
+
+    ]);
+
+    const total = await Device.countDocuments(match);
 
     res.json({
-      devices
+
+      devices,
+
+      pagination: {
+        page,
+        pages: Math.ceil(total / limit),
+        total
+      }
+
     });
 
-  } catch {
+  } catch (err) {
+
+    console.error("ADMIN DEVICE LIST ERROR:", err);
 
     res.status(500).json({
       message: "Failed to load devices"
@@ -89,13 +166,12 @@ router.get("/", adminAuth, async (req, res) => {
 
 router.post("/:id/trust", adminAuth, async (req, res) => {
 
-  await UserDevice.findByIdAndUpdate(
+  await Device.findByIdAndUpdate(
     req.params.id,
     {
       trusted: true,
       flagged: false,
-      blocked: false,
-      riskScore: 0,
+      blocked: false
     }
   );
 
@@ -113,11 +189,11 @@ router.post("/:id/trust", adminAuth, async (req, res) => {
 
 router.post("/:id/flag", adminAuth, async (req, res) => {
 
-  await UserDevice.findByIdAndUpdate(
+  await Device.findByIdAndUpdate(
     req.params.id,
     {
       flagged: true,
-      trusted: false,
+      trusted: false
     }
   );
 
@@ -135,13 +211,12 @@ router.post("/:id/flag", adminAuth, async (req, res) => {
 
 router.post("/:id/block", adminAuth, async (req, res) => {
 
-  await UserDevice.findByIdAndUpdate(
+  await Device.findByIdAndUpdate(
     req.params.id,
     {
       blocked: true,
       flagged: true,
-      trusted: false,
-      riskScore: 100,
+      trusted: false
     }
   );
 
@@ -154,7 +229,7 @@ router.post("/:id/block", adminAuth, async (req, res) => {
 });
 
 /* ============================================
-   RESET TRUST
+   RESET USER TRUST
 ============================================ */
 
 router.post(
