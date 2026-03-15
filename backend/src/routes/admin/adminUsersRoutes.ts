@@ -14,12 +14,10 @@ const router = express.Router();
  * List all users with wallet + trust info
  * ======================================================
  */
-
 router.get("/", adminAuth, async (_req, res) => {
   try {
 
     const users = await User.aggregate([
-
       {
         $lookup: {
           from: "wallets",
@@ -28,7 +26,6 @@ router.get("/", adminAuth, async (_req, res) => {
           as: "wallet"
         }
       },
-
       {
         $lookup: {
           from: "usertrusts",
@@ -37,22 +34,14 @@ router.get("/", adminAuth, async (_req, res) => {
           as: "trust"
         }
       },
-
       {
         $addFields: {
 
           wallet: { $arrayElemAt: ["$wallet", 0] },
-
-          trust: {
-            $ifNull: [
-              { $arrayElemAt: ["$trust", 0] },
-              { score: 100 }
-            ]
-          }
+          trust: { $arrayElemAt: ["$trust", 0] }
 
         }
       },
-
       {
         $project: {
 
@@ -60,48 +49,49 @@ router.get("/", adminAuth, async (_req, res) => {
           createdAt: 1,
           pausedUntil: 1,
           pauseReason: 1,
+          kycStatus: { $ifNull: ["$kycStatus", "pending"] },
 
-          kycStatus: {
-            $ifNull: ["$kycStatus", "pending"]
-          },
+          trustScore: { $ifNull: ["$trust.score", 100] },
 
-          trustScore: "$trust.score",
-
-          trustStatus: {
-            $switch: {
-              branches: [
-                { case: { $lt: ["$trust.score", 40] }, then: "blocked" },
-                { case: { $lt: ["$trust.score", 60] }, then: "limited" },
-                { case: { $lt: ["$trust.score", 80] }, then: "reduced" }
-              ],
-              default: "good"
-            }
-          },
-
-          totalMinutes: {
-            $ifNull: ["$wallet.totalMinutes", 0]
-          },
-
-          balanceATC: {
-            $ifNull: ["$wallet.balanceATC", 0]
-          }
+          totalMinutes: { $ifNull: ["$wallet.totalMinutes", 0] },
+          balanceATC: { $ifNull: ["$wallet.balanceATC", 0] }
 
         }
       },
-
       {
         $sort: { createdAt: -1 }
       }
-
     ]);
 
+    const enriched = users.map(u => {
+
+      const trustScore = u.trustScore ?? 100;
+
+      return {
+
+        ...u,
+
+        trustStatus:
+          trustScore < 40
+            ? "blocked"
+            : trustScore < 60
+            ? "limited"
+            : trustScore < 80
+            ? "reduced"
+            : "good"
+
+      };
+
+    });
+
     res.json({
-      users
+      success: true,
+      users: enriched
     });
 
   } catch (err) {
 
-    console.error("ADMIN USERS ERROR:", err);
+    console.error("ADMIN USERS LIST ERROR:", err);
 
     res.status(500).json({
       message: "Failed to load users"
