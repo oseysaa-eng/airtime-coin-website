@@ -1,13 +1,18 @@
 "use client";
 
+import DeviceActions from "./DeviceActions";
+import RiskBadge from "./RiskBadge";
+import TrustBadge from "./TrustBadge";
+
 export default function DeviceTable({
   devices,
-  trustDevice,
-  flagDevice,
-  blockDevice,
-}: any) {
+  reload,
+}: {
+  devices: any[];
+  reload: () => void;
+}) {
 
-  if (!devices.length) {
+  if (!devices || devices.length === 0) {
     return (
       <div className="p-6 text-gray-500">
         No devices found
@@ -17,16 +22,16 @@ export default function DeviceTable({
 
   return (
 
-    <div className="border rounded overflow-hidden">
+    <div className="border rounded overflow-hidden bg-white">
 
-      <table className="w-full">
+      <table className="w-full text-sm">
 
         <thead className="bg-gray-100">
 
           <tr>
 
             <th className="p-3 text-left">Device</th>
-            <th>User</th>
+            <th className="text-left">User</th>
             <th>Risk</th>
             <th>Status</th>
             <th>Last Seen</th>
@@ -38,78 +43,85 @@ export default function DeviceTable({
 
         <tbody>
 
-          {devices.map((device: any) => (
+          {devices.map((device: any) => {
 
-            <tr key={device._id} className="border-t">
+            const deviceName =
+              device.deviceName ||
+              device.model ||
+              "Unknown Device";
 
-              <td className="p-3">
-                {device.deviceName || "Unknown"}
-              </td>
+            const userEmail =
+              device.userEmail ||
+              device.userId?.email ||
+              "-";
 
-              <td>
-                {device.userId?.email || "-"}
-              </td>
+            const lastSeen =
+              device.lastSeenAt
+                ? new Date(device.lastSeenAt).toLocaleString()
+                : "-";
 
-              <td>
+            return (
 
-                <span className={
-                  device.riskScore > 70
-                    ? "text-red-600 font-bold"
-                    : device.riskScore > 40
-                    ? "text-orange-500 font-bold"
-                    : "text-green-600 font-bold"
-                }>
-                  {device.riskScore}
-                </span>
+              <tr
+                key={device._id}
+                className="border-t hover:bg-gray-50"
+              >
 
-              </td>
+                {/* DEVICE */}
+                <td className="p-3">
 
-              <td>
+                  <div className="font-medium">
+                    {deviceName}
+                  </div>
 
-                {device.blocked
-                  ? "Blocked"
-                  : device.flagged
-                  ? "Flagged"
-                  : device.trusted
-                  ? "Trusted"
-                  : "New"}
+                  <div className="text-xs text-gray-500">
+                    {device.platform}
+                    {device.osVersion && (
+                      <> • {device.osVersion}</>
+                    )}
+                  </div>
 
-              </td>
+                </td>
 
-              <td>
-                {device.lastSeen
-                  ? new Date(device.lastSeen).toLocaleString()
-                  : "-"}
-              </td>
+                {/* USER */}
+                <td>
+                  {userEmail}
+                </td>
 
-              <td className="space-x-2">
+                {/* RISK */}
+                <td className="text-center">
+                  <RiskBadge
+                    score={device.riskScore ?? 0}
+                  />
+                </td>
 
-                <button
-                  onClick={() => trustDevice(device._id)}
-                  className="px-2 py-1 bg-green-600 text-white rounded"
-                >
-                  Trust
-                </button>
+                {/* STATUS */}
+                <td className="text-center">
+                  <TrustBadge
+                    trusted={device.trusted}
+                    flagged={device.flagged}
+                    blocked={device.blocked}
+                  />
+                </td>
 
-                <button
-                  onClick={() => flagDevice(device._id)}
-                  className="px-2 py-1 bg-orange-500 text-white rounded"
-                >
-                  Flag
-                </button>
+                {/* LAST SEEN */}
+                <td className="text-gray-600">
+                  {lastSeen}
+                </td>
 
-                <button
-                  onClick={() => blockDevice(device._id)}
-                  className="px-2 py-1 bg-red-600 text-white rounded"
-                >
-                  Block
-                </button>
+                {/* ACTIONS */}
+                <td>
+                  <DeviceActions
+                    deviceId={device._id}
+                    reload={reload}
+                  />
+                </td>
 
-              </td>
+              </tr>
 
-            </tr>
+            );
 
-          ))}
+          })}
 
         </tbody>
 
