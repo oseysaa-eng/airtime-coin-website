@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const adminApi = axios.create({
-  baseURL: "/api/admin",
+  baseURL: process.env.NEXT_PUBLIC_API_URL + "/api/admin",
   timeout: 15000,
 });
 
@@ -9,18 +9,20 @@ const adminApi = axios.create({
    REQUEST INTERCEPTOR
 ====================================================== */
 
-adminApi.interceptors.request.use(config => {
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("adminToken")
-      : null;
+adminApi.interceptors.request.use((config) => {
 
-  if (token) {
-    config.headers.Authorization =
-      `Bearer ${token}`;
+  if (typeof window !== "undefined") {
+
+    const token = localStorage.getItem("adminToken");
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
   }
 
   return config;
+
 });
 
 /* ======================================================
@@ -28,15 +30,24 @@ adminApi.interceptors.request.use(config => {
 ====================================================== */
 
 adminApi.interceptors.response.use(
-  res => res,
-  err => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem("adminToken");
+  (res) => res,
 
-      window.location.href = "/admin/login";
+  (err) => {
+
+    if (err.response?.status === 401) {
+
+      if (typeof window !== "undefined") {
+
+        localStorage.removeItem("adminToken");
+
+        window.location.href = "/admin/login";
+
+      }
+
     }
 
     return Promise.reject(err);
+
   }
 );
 
