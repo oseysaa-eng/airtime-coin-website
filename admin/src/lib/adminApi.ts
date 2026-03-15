@@ -1,13 +1,15 @@
 import axios from "axios";
 
+const API_URL =
+  process.env.NEXT_PUBLIC_ADMIN_API_URL ||
+  "https://atc-backend-cn4f.onrender.com";
+
 const adminApi = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL + "/api/admin",
-  timeout: 15000,
+  baseURL: `${API_URL}/api/admin`,
+  timeout: 30000,
 });
 
-/* ======================================================
-   REQUEST INTERCEPTOR
-====================================================== */
+/* REQUEST INTERCEPTOR */
 
 adminApi.interceptors.request.use((config) => {
 
@@ -25,9 +27,7 @@ adminApi.interceptors.request.use((config) => {
 
 });
 
-/* ======================================================
-   RESPONSE INTERCEPTOR
-====================================================== */
+/* RESPONSE INTERCEPTOR */
 
 adminApi.interceptors.response.use(
   (res) => res,
