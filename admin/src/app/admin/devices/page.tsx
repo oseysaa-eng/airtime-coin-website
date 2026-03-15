@@ -15,15 +15,18 @@ export default function DevicesPage() {
   const [status, setStatus] = useState("");
 
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   /* ─────────────────────────────
      LOAD DEVICES
   ───────────────────────────── */
+
   const loadDevices = async () => {
 
     try {
 
       setLoading(true);
+      setError(null);
 
       const res = await adminApi.get("/devices", {
         params: {
@@ -36,10 +39,11 @@ export default function DevicesPage() {
       setDevices(res.data?.devices || []);
       setPages(res.data?.pagination?.pages || 1);
 
-    } catch (err) {
+    } catch (err: any) {
 
       console.error("Device load error:", err);
 
+      setError("Failed to load devices");
       setDevices([]);
       setPages(1);
 
@@ -51,65 +55,42 @@ export default function DevicesPage() {
 
   };
 
-useEffect(() => {
-
-  const socket = getAdminSocket();
-
-  socket.on("device.flagged", loadDevices);
-  socket.on("device.blocked", loadDevices);
-  socket.on("device.trusted", loadDevices);
-
-  return () => {
-
-    socket.off("device.flagged", loadDevices);
-    socket.off("device.blocked", loadDevices);
-    socket.off("device.trusted", loadDevices);
-
-  };
-
-}, []);
-
-
+  /* ─────────────────────────────
+     SOCKET EVENTS
+  ───────────────────────────── */
 
   useEffect(() => {
 
-    loadDevices();
+    const socket = getAdminSocket();
 
-  }, [page, search, status]);
+    const refresh = () => loadDevices();
+
+    socket.on("device.flagged", refresh);
+    socket.on("device.blocked", refresh);
+    socket.on("device.trusted", refresh);
+
+    return () => {
+
+      socket.off("device.flagged", refresh);
+      socket.off("device.blocked", refresh);
+      socket.off("device.trusted", refresh);
+
+    };
+
+  }, []);
 
   /* ─────────────────────────────
-     DEVICE ACTIONS
+     INITIAL LOAD
   ───────────────────────────── */
 
-  const trustDevice = async (id: string) => {
-
-    await adminApi.post(`/devices/${id}/trust`);
-
+  useEffect(() => {
     loadDevices();
-
-  };
-
-  const flagDevice = async (id: string) => {
-
-    await adminApi.post(`/devices/${id}/flag`);
-
-    loadDevices();
-
-  };
-
-  const blockDevice = async (id: string) => {
-
-    if (!confirm("Block this device?")) return;
-
-    await adminApi.post(`/devices/${id}/block`);
-
-    loadDevices();
-
-  };
+  }, [page, search, status]);
 
   /* ───────────────────────────── */
 
   return (
+
     <div className="p-6 space-y-6">
 
       <h1 className="text-2xl font-bold">
@@ -117,6 +98,7 @@ useEffect(() => {
       </h1>
 
       {/* SEARCH + FILTER */}
+
       <div className="flex gap-3">
 
         <input
@@ -145,24 +127,25 @@ useEffect(() => {
 
       </div>
 
-      {/* DEVICE TABLE COMPONENT */}
-      {loading ? (
+      {/* TABLE */}
 
+      {loading && (
         <p>Loading devices...</p>
+      )}
 
-      ) : (
+      {error && (
+        <p className="text-red-600">{error}</p>
+      )}
 
+      {!loading && !error && (
         <DeviceTable
           devices={devices}
-          trustDevice={trustDevice}
-          flagDevice={flagDevice}
-          blockDevice={blockDevice}
           reload={loadDevices}
         />
-
       )}
 
       {/* PAGINATION */}
+
       <div className="flex gap-2">
 
         {[...Array(pages)].map((_, i) => (
@@ -184,6 +167,7 @@ useEffect(() => {
       </div>
 
     </div>
+
   );
 
 }

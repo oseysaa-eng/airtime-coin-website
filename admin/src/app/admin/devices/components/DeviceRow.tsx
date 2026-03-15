@@ -11,17 +11,38 @@ export default function DeviceRow({
   device: any;
   reload: () => void;
 }) {
+  const deviceName =
+    device.deviceName ||
+    device.model ||
+    "Unknown Device";
+
+  const platform =
+    device.platform ||
+    device.os ||
+    "Unknown OS";
+
+  const lastSeen = device.lastSeenAt
+    ? new Date(device.lastSeenAt).toLocaleString()
+    : "—";
+
   return (
-    <tr className="border-t">
+    <tr className="border-t hover:bg-gray-50">
+
+      {/* DEVICE INFO */}
       <td className="p-3">
         <div className="font-medium">
-          {device.deviceName || "Unknown"}
+          {deviceName}
         </div>
+
         <div className="text-xs text-gray-500">
-          {device.platform}
+          {platform}
+          {device.osVersion && (
+            <> • {device.osVersion}</>
+          )}
         </div>
       </td>
 
+      {/* TRUST STATUS */}
       <td>
         <TrustBadge
           trusted={device.trusted}
@@ -30,22 +51,26 @@ export default function DeviceRow({
         />
       </td>
 
+      {/* RISK SCORE */}
       <td>
         <RiskBadge score={device.riskScore ?? 0} />
       </td>
 
-      <td>
-        {device.lastSeen
-          ? new Date(device.lastSeen).toLocaleString()
-          : "—"}
+      {/* LAST SEEN */}
+      <td className="text-sm text-gray-600">
+        {lastSeen}
       </td>
 
+      {/* ACTIONS */}
       <td>
-        <DeviceActions
-          deviceId={device._id}
-          reload={reload}
-        />
+        {device._id && (
+          <DeviceActions
+            deviceId={device._id}
+            reload={reload}
+          />
+        )}
       </td>
+
     </tr>
   );
 }
