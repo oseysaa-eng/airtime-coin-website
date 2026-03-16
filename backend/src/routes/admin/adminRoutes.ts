@@ -9,6 +9,7 @@ import adminSystemRoutes from "./adminSystemRoutes";
 import adminUsersRoutes from "./adminUsersRoutes";
 import adminUtilityRoutes from "./adminUtilityRoutes";
 import adminDeviceRoutes from "./adminDeviceRoutes";
+import adminFraudRadarRoutes from "./adminFraudRadarRoutes";
 
 
 
@@ -38,5 +39,7 @@ router.use("/audit", adminAuditRoutes);
 router.use("/utility", adminUtilityRoutes);
 
 router.use("/devices", adminDeviceRoutes);
+
+router.use("/fraud-radar", adminFraudRadarRoutes);
 
 export default router;
