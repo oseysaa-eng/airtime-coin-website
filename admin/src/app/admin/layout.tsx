@@ -22,7 +22,7 @@ const NAV_ITEMS = [
   { label: "Devices", href: "/admin/devices" },
   { label: "Audit Logs", href: "/admin/audit" },
   { label: "Invites", href: "/admin/invites" },
-  { label: "Fraud-Radar", href: "/admin/invites" }
+  { label: "Fraud-Radar", href: "/admin/fraud-radar" }
 ];
 
 /* ======================================================
