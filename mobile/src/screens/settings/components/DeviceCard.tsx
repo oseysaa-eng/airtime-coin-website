@@ -1,10 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import {
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type Props = {
@@ -18,81 +18,107 @@ export default function DeviceCard({
   current,
   onRemove,
 }: Props) {
+
+  const platform = device.platform?.toLowerCase();
+
+  const icon =
+    platform === "ios"
+      ? "logo-apple"
+      : "logo-android";
+
   return (
+
     <View style={styles.card}>
+
       <View style={styles.row}>
+
         <Ionicons
-          name={
-            device.platform === "ios"
-              ? "logo-apple"
-              : "logo-android"
-          }
+          name={icon}
           size={22}
           color="#0ea5a4"
         />
 
         <View style={{ flex: 1, marginLeft: 12 }}>
+
           <Text style={styles.name}>
             {device.deviceName || "Unknown Device"}
           </Text>
 
           <Text style={styles.meta}>
-            {device.platform?.toUpperCase()} ·{" "}
+            {device.platform?.toUpperCase() || "UNKNOWN"} ·{" "}
             {device.country || "Unknown"}
           </Text>
 
           <Text style={styles.time}>
             Last active:{" "}
-            {new Date(device.lastSeen).toLocaleString()}
+            {device.lastSeenAt
+              ? new Date(device.lastSeenAt).toLocaleString()
+              : "—"}
           </Text>
+
         </View>
 
         {current ? (
+
           <Text style={styles.current}>
             This device
           </Text>
+
         ) : (
-          <TouchableOpacity
-            onPress={onRemove}
-          >
+
+          <TouchableOpacity onPress={onRemove}>
+
             <Ionicons
               name="trash-outline"
               size={20}
               color="red"
             />
+
           </TouchableOpacity>
+
         )}
+
       </View>
+
     </View>
+
   );
+
 }
 
 const styles = StyleSheet.create({
+
   card: {
     backgroundColor: "#fff",
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
   },
+
   row: {
     flexDirection: "row",
     alignItems: "center",
   },
+
   name: {
     fontSize: 16,
     fontWeight: "600",
   },
+
   meta: {
     fontSize: 13,
     color: "#64748b",
   },
+
   time: {
     fontSize: 12,
     color: "#94a3b8",
   },
+
   current: {
     color: "#16a34a",
     fontSize: 12,
     fontWeight: "600",
   },
+
 });
