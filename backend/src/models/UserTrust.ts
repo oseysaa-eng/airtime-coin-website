@@ -1,22 +1,31 @@
 import mongoose, { Document, Schema } from "mongoose";
 
 export interface IUserTrust extends Document {
+
   userId: mongoose.Types.ObjectId;
+
   score: number;
+
+  flags: {
+    multiAccount: boolean;
+    emulator: boolean;
+    rapidSwitch: boolean;
+  };
+
+  reasons?: string[];
+
   lastDecayAt?: Date;
   lastRecoveryAt?: Date;
+  lastSeenAt: Date;
+
   createdAt: Date;
   updatedAt: Date;
-  trustScore: Number;
-  flags: {
-  multiAccount: Boolean;
-  emulator: Boolean;
-  rapidSwitch: Boolean;
-},
+
 }
 
 const UserTrustSchema = new Schema<IUserTrust>(
   {
+
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -25,12 +34,6 @@ const UserTrustSchema = new Schema<IUserTrust>(
       index: true,
     },
 
-    trustScore: { type: Number, default: 100 },
-    flags: {
-      multiAccount: { type: Boolean, default: false },
-      emulator: { type: Boolean, default: false },
-      rapidSwitch: { type: Boolean, default: false },
-    },
     score: {
       type: Number,
       default: 100,
@@ -38,22 +41,36 @@ const UserTrustSchema = new Schema<IUserTrust>(
       max: 100,
     },
 
-    lastDecayAt: {
-      type: Date,
+    flags: {
+
+      multiAccount: {
+        type: Boolean,
+        default: false,
+      },
+
+      emulator: {
+        type: Boolean,
+        default: false,
+      },
+
+      rapidSwitch: {
+        type: Boolean,
+        default: false,
+      },
+
     },
 
-    lastRecoveryAt: {
-      type: Date,
-    },
+    reasons: [String],
+
+    lastDecayAt: Date,
+    lastRecoveryAt: Date,
+    lastSeenAt: Date,
+
   },
   { timestamps: true }
-
 );
 
 export default mongoose.model<IUserTrust>(
   "UserTrust",
   UserTrustSchema
 );
-
-
-

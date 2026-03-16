@@ -54,3 +54,5 @@ export default mongoose.model(
   "DeviceBinding",
   DeviceBindingSchema
 );
+
+
