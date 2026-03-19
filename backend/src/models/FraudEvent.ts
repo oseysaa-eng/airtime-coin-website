@@ -1,12 +1,10 @@
 import mongoose from "mongoose";
 
-const FraudEventSchema = new mongoose.Schema(
-{
-  type: {
-    type: String,
-    required: true
-  },
+const FraudEventSchema = new mongoose.Schema({
+  userId: { type: mongoose.Types.ObjectId, index: true },
+  deviceId: { type: mongoose.Types.ObjectId },
 
+  type: String,
   severity: {
     type: String,
     enum: ["low","medium","high","critical"],
@@ -15,20 +13,8 @@ const FraudEventSchema = new mongoose.Schema(
 
   message: String,
 
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User"
-  },
-
-  deviceId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Device"
-  },
-
   meta: Object
 
-},
-{ timestamps: true }
-);
+}, { timestamps: true });
 
 export default mongoose.model("FraudEvent", FraudEventSchema);
