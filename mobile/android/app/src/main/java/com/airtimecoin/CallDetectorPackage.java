@@ -1,4 +1,4 @@
-package com.atcapp;
+package com.anonymous.ATCAppExpo;
 
 import com.facebook.react.*;
 import java.util.*;

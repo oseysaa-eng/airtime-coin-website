@@ -2,9 +2,14 @@ import { NativeModules, NativeEventEmitter } from "react-native";
 
 const { CallDetector } = NativeModules;
 
-const emitter = new NativeEventEmitter(CallDetector);
+export const initCallMining = (onStart:any, onEnd:any) => {
 
-export const startCallListener = (onStart:any, onEnd:any) => {
+  if (!CallDetector) {
+    console.warn("CallDetector not available (Expo Go?)");
+    return;
+  }
+
+  const emitter = new NativeEventEmitter(CallDetector);
 
   emitter.addListener("CALL_STARTED", onStart);
 
