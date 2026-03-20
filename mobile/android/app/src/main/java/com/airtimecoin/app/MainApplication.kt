@@ -12,9 +12,11 @@ import com.facebook.react.ReactHost
 import com.facebook.react.common.ReleaseLevel
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 import com.facebook.react.defaults.DefaultReactNativeHost
+import com.anonymous.ATCAppExpo.CallDetectorPackage;
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
+
 
 class MainApplication : Application(), ReactApplication {
 
@@ -48,6 +50,15 @@ class MainApplication : Application(), ReactApplication {
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
   }
+
+  @Override
+protected List<ReactPackage> getPackages() {
+  List<ReactPackage> packages = new PackageList(this).getPackages();
+
+  packages.add(new CallDetectorPackage()); // ✅ ADD THIS
+
+  return packages;
+}
 
   override fun onConfigurationChanged(newConfig: Configuration) {
     super.onConfigurationChanged(newConfig)
