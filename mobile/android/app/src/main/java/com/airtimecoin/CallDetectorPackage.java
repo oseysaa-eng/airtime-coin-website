@@ -1,4 +1,4 @@
-package com.anonymous.ATCAppExpo;
+package com.airtimecoin.app;
 
 import com.facebook.react.*;
 import java.util.*;

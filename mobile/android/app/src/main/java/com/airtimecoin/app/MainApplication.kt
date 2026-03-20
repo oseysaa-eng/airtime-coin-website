@@ -12,10 +12,11 @@ import com.facebook.react.ReactHost
 import com.facebook.react.common.ReleaseLevel
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 import com.facebook.react.defaults.DefaultReactNativeHost
-import com.anonymous.ATCAppExpo.CallDetectorPackage;
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
+import com.airtimecoin.app.CallDetectorPackage
+
 
 
 class MainApplication : Application(), ReactApplication {
@@ -23,11 +24,12 @@ class MainApplication : Application(), ReactApplication {
   override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
       this,
       object : DefaultReactNativeHost(this) {
-        override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
-            }
+
+          override fun getPackages(): List<ReactPackage> =
+              PackageList(this).packages.apply {
+                  add(CallDetectorPackage())
+              }
+
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 
@@ -50,15 +52,6 @@ class MainApplication : Application(), ReactApplication {
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
   }
-
-  @Override
-protected List<ReactPackage> getPackages() {
-  List<ReactPackage> packages = new PackageList(this).getPackages();
-
-  packages.add(new CallDetectorPackage()); // ✅ ADD THIS
-
-  return packages;
-}
 
   override fun onConfigurationChanged(newConfig: Configuration) {
     super.onConfigurationChanged(newConfig)
