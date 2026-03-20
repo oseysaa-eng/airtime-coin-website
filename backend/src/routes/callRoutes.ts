@@ -6,7 +6,7 @@ import DailyCall from "../models/DailyCall";
 import Wallet from "../models/Wallet";
 import SystemSettings from "../models/SystemSettings";
 
-import { runCallFraudChecks } from "../services/callFraudEngine";
+import { runCallFraudChecks } from "../services/callFraudEngine.tz";
 
 const router = express.Router();
 
