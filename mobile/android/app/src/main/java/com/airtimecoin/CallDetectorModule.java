@@ -5,6 +5,7 @@ import android.content.Context;
 
 import com.facebook.react.bridge.*;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
+import android.content.Intent;
 
 public class CallDetectorModule extends ReactContextBaseJavaModule {
 
@@ -43,6 +44,8 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
             public void onCallStateChanged(int state, String phoneNumber) {
 
                 if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
+                    Intent intent = new Intent(getReactApplicationContext(), OverlayService.class);
+getReactApplicationContext().startService(intent);
 
                     callStartTime = System.currentTimeMillis();
 
@@ -50,6 +53,8 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
                 }
 
                 if (state == TelephonyManager.CALL_STATE_IDLE && callStartTime != 0) {
+                    Intent intent = new Intent(getReactApplicationContext(), OverlayService.class);
+getReactApplicationContext().stopService(intent);
 
                     long duration =
                         (System.currentTimeMillis() - callStartTime) / 1000;
