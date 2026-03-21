@@ -24,12 +24,10 @@ class MainApplication : Application(), ReactApplication {
   override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
       this,
       object : DefaultReactNativeHost(this) {
-
-          override fun getPackages(): List<ReactPackage> =
-              PackageList(this).packages.apply {
-                  add(CallDetectorPackage())
-              }
-
+      override fun getPackages(): List<ReactPackage> =
+    PackageList(this).packages.apply {
+        add(CallDetectorPackage())
+    }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 
