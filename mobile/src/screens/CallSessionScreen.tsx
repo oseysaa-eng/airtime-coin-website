@@ -19,6 +19,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
 
+
+
 /* ---------------- PERMISSION ---------------- */
 const requestCallPermissions = async () => {
   if (Platform.OS !== "android") return true;
@@ -38,8 +40,6 @@ const requestCallPermissions = async () => {
     return false;
   }
 };
-
-
 
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -70,28 +70,18 @@ export default function CallMiningScreen() {
     } catch {}
   };
 
-  useEffect(() => {
-    loadWeeklyCalls();
-  }, []);
-
-const requestOverlayPermission = async () => {
+const requestOverlayPermission = () => {
   if (Platform.OS !== "android") return;
 
-  Alert.alert(
-    "Enable Overlay",
-    "Allow display over other apps",
-    [
-      {
-        text: "Open Settings",
-        onPress: () => {
-          Linking.openURL("package:" + "com.airtimecoin.app");
-        },
-      },
-    ]
-  );
+  Linking.openSettings(); // fallback
+
+  // Better option (deep link)
+  Linking.openURL("android.settings.action.MANAGE_OVERLAY_PERMISSION");
 };
 
-const enableAccessibility = () => {
+
+const enableAccessibility = async() => {
+if (Platform.OS !== "android") return;
   Alert.alert(
     "Enable Call Mining",
     "Turn on Accessibility Service for call detection",
@@ -108,21 +98,22 @@ const enableAccessibility = () => {
 
 
   /* ---------------- AUTO CALL DETECTOR ---------------- */
-
-  
-
 useEffect(() => {
 
   const setup = async () => {
 
+    // 1️⃣ Request permissions
     const hasPermission = await requestCallPermissions();
 
     if (!hasPermission) {
-      Alert.alert("Permission required");
+      Alert.alert("Permission required", "Enable phone permissions");
       return;
     }
 
-    // ✅ Show accessibility prompt only once
+    // 2️⃣ Ask overlay permission
+    requestOverlayPermission();
+
+    // 3️⃣ Ask accessibility (ONLY ONCE)
     const asked = await AsyncStorage.getItem("accessibility_asked");
 
     if (!asked) {
@@ -132,9 +123,7 @@ useEffect(() => {
         [
           {
             text: "Open Settings",
-            onPress: () => {
-              Linking.openSettings();
-            },
+            onPress: () => Linking.openSettings(),
           },
         ]
       );
@@ -142,51 +131,7 @@ useEffect(() => {
       await AsyncStorage.setItem("accessibility_asked", "true");
     }
 
-    initCallMining(
-      () => {
-        setActive(true);
-        setSeconds(0);
-
-        intervalRef.current = setInterval(() => {
-          setSeconds((s) => s + 1);
-        }, 1000);
-      },
-      async (duration: number) => {
-        clearInterval(intervalRef.current);
-        setActive(false);
-
-        await API.post("/api/call/auto-credit", {
-          seconds: duration
-        });
-
-        loadWeeklyCalls();
-      }
-    );
-  };
-
-  setup();
-
-  return () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-  };
-
-}, []);
-
-
-
-  useEffect(() => {
-
-  const setup = async () => {
-
-    const hasPermission = await requestCallPermissions();
-
-    if (!hasPermission) {
-      Alert.alert("Permission required", "Enable phone permissions to use call mining");
-      return;
-    }
-
-    requestOverlayPermission();
-
+    // 4️⃣ Start call mining
     initCallMining(
 
       () => {
@@ -220,7 +165,7 @@ useEffect(() => {
   };
 
 }, []);
-
+  
 
   /* ---------------- UI ---------------- */
   return (
