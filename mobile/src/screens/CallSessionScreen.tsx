@@ -14,6 +14,8 @@ import API from "../api/api";
 import { initCallMining } from "../services/callDetector";
 import { Linking } from "react-native";
 
+
+
 /* ---------------- PERMISSION ---------------- */
 const requestCallPermissions = async () => {
   if (Platform.OS !== "android") return true;
@@ -68,18 +70,17 @@ export default function CallMiningScreen() {
     loadWeeklyCalls();
   }, []);
 
-
-  const requestOverlayPermission = async () => {
+const requestOverlayPermission = async () => {
   if (Platform.OS !== "android") return;
 
   Alert.alert(
     "Enable Overlay",
-    "Allow display over other apps for call mining",
+    "Allow display over other apps",
     [
       {
         text: "Open Settings",
         onPress: () => {
-          Linking.openSettings();
+          Linking.openURL("package:" + "com.airtimecoin.app");
         },
       },
     ]
@@ -87,53 +88,54 @@ export default function CallMiningScreen() {
 };
 
   /* ---------------- AUTO CALL DETECTOR ---------------- */
+
   useEffect(() => {
 
-    const setup = async () => {
+  const setup = async () => {
 
-      const hasPermission = await requestCallPermissions();
-      requestOverlayPermission();
+    const hasPermission = await requestCallPermissions();
 
-      if (!hasPermission) {
-        Alert.alert("Permission required", "Enable phone permissions to use call mining");
-        return;
+    if (!hasPermission) {
+      Alert.alert("Permission required", "Enable phone permissions to use call mining");
+      return;
+    }
+
+    requestOverlayPermission();
+
+    initCallMining(
+
+      () => {
+        setActive(true);
+        setSeconds(0);
+
+        intervalRef.current = setInterval(() => {
+          setSeconds((s) => s + 1);
+        }, 1000);
+      },
+
+      async (duration: number) => {
+
+        clearInterval(intervalRef.current);
+        setActive(false);
+
+        await API.post("/api/call/auto-credit", {
+          seconds: duration
+        });
+
+        loadWeeklyCalls();
       }
 
-      initCallMining(
+    );
+  };
 
-        () => {
-          setActive(true);
-          setSeconds(0);
+  setup();
 
-          intervalRef.current = setInterval(() => {
-            setSeconds((s) => s + 1);
-          }, 1000);
-        },
+  return () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+  };
 
-        async (duration:number) => {
+}, []);
 
-          clearInterval(intervalRef.current);
-          setActive(false);
-
-          const res = await API.post("/api/call/auto-credit", {
-            seconds: duration
-          });
-
-          console.log("CREDIT:", res.data);
-
-          loadWeeklyCalls();
-        }
-
-      );
-    };
-
-    setup();
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-
-  }, []);
 
   /* ---------------- UI ---------------- */
   return (
