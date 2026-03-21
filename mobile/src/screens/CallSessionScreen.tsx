@@ -12,6 +12,7 @@ import { LineChart } from "react-native-chart-kit";
 
 import API from "../api/api";
 import { initCallMining } from "../services/callDetector";
+import { Linking } from "react-native";
 
 /* ---------------- PERMISSION ---------------- */
 const requestCallPermissions = async () => {
@@ -32,6 +33,7 @@ const requestCallPermissions = async () => {
     return false;
   }
 };
+
 
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -66,12 +68,31 @@ export default function CallMiningScreen() {
     loadWeeklyCalls();
   }, []);
 
+
+  const requestOverlayPermission = async () => {
+  if (Platform.OS !== "android") return;
+
+  Alert.alert(
+    "Enable Overlay",
+    "Allow display over other apps for call mining",
+    [
+      {
+        text: "Open Settings",
+        onPress: () => {
+          Linking.openSettings();
+        },
+      },
+    ]
+  );
+};
+
   /* ---------------- AUTO CALL DETECTOR ---------------- */
   useEffect(() => {
 
     const setup = async () => {
 
       const hasPermission = await requestCallPermissions();
+      requestOverlayPermission();
 
       if (!hasPermission) {
         Alert.alert("Permission required", "Enable phone permissions to use call mining");
