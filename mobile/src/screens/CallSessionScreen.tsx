@@ -4,11 +4,34 @@ import {
   StyleSheet,
   Text,
   View,
+  PermissionsAndroid,
+  Platform,
+  Alert
 } from "react-native";
 import { LineChart } from "react-native-chart-kit";
 
 import API from "../api/api";
 import { initCallMining } from "../services/callDetector";
+
+/* ---------------- PERMISSION ---------------- */
+const requestCallPermissions = async () => {
+  if (Platform.OS !== "android") return true;
+
+  try {
+    const granted = await PermissionsAndroid.requestMultiple([
+      PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+      PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
+    ]);
+
+    return (
+      granted["android.permission.READ_PHONE_STATE"] === "granted" &&
+      granted["android.permission.READ_CALL_LOG"] === "granted"
+    );
+  } catch (err) {
+    console.warn(err);
+    return false;
+  }
+};
 
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -46,32 +69,48 @@ export default function CallMiningScreen() {
   /* ---------------- AUTO CALL DETECTOR ---------------- */
   useEffect(() => {
 
-    initCallMining(
+    const setup = async () => {
 
-      () => {
-        setActive(true);
-        setSeconds(0);
+      const hasPermission = await requestCallPermissions();
 
-        intervalRef.current = setInterval(() => {
-          setSeconds((s) => s + 1);
-        }, 1000);
-      },
-
-      async (duration:number) => {
-
-        clearInterval(intervalRef.current);
-        setActive(false);
-
-        const res = await API.post("/api/call/auto-credit", {
-          seconds: duration
-        });
-
-        console.log("CREDIT:", res.data);
-
-        loadWeeklyCalls();
+      if (!hasPermission) {
+        Alert.alert("Permission required", "Enable phone permissions to use call mining");
+        return;
       }
 
-    );
+      initCallMining(
+
+        () => {
+          setActive(true);
+          setSeconds(0);
+
+          intervalRef.current = setInterval(() => {
+            setSeconds((s) => s + 1);
+          }, 1000);
+        },
+
+        async (duration:number) => {
+
+          clearInterval(intervalRef.current);
+          setActive(false);
+
+          const res = await API.post("/api/call/auto-credit", {
+            seconds: duration
+          });
+
+          console.log("CREDIT:", res.data);
+
+          loadWeeklyCalls();
+        }
+
+      );
+    };
+
+    setup();
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
 
   }, []);
 
