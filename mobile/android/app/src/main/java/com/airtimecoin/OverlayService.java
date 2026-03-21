@@ -3,11 +3,14 @@ package com.airtimecoin.app;
 import android.app.*;
 import android.content.Intent;
 import android.graphics.PixelFormat;
+import android.os.Build;
 import android.os.IBinder;
+import android.provider.Settings;
 import android.view.*;
 import android.widget.TextView;
-import android.os.Build;
-import android.provider.Settings;
+import android.content.pm.ServiceInfo;
+
+import androidx.core.app.NotificationCompat;
 
 public class OverlayService extends Service {
 
@@ -18,30 +21,33 @@ public class OverlayService extends Service {
     public void onCreate() {
         super.onCreate();
 
-        // ✅ REQUIRED: Proper notification
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        createNotificationChannel();
+    }
 
-            String channelId = "overlay_channel";
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
 
-            NotificationChannel channel = new NotificationChannel(
-                channelId,
-                "Overlay Service",
-                NotificationManager.IMPORTANCE_LOW
-            );
-
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            manager.createNotificationChannel(channel);
-
-            Notification notification = new Notification.Builder(this, channelId)
-                .setContentTitle("ATC Running")
-                .setContentText("Call mining active")
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+        // ✅ FOREGROUND SERVICE (REQUIRED)
+        Notification notification = new NotificationCompat.Builder(this, "call_channel")
+                .setContentTitle("Call Mining Active")
+                .setContentText("Tracking your call...")
+                .setSmallIcon(android.R.drawable.sym_call_incoming)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build();
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL);
+        } else {
             startForeground(1, notification);
         }
 
-        // ✅ Check permission
+        showOverlay();
+
+        return START_STICKY;
+    }
+
+    private void showOverlay() {
+
         if (!Settings.canDrawOverlays(this)) {
             stopSelf();
             return;
@@ -56,20 +62,16 @@ public class OverlayService extends Service {
         text.setTextColor(0xFFFFFFFF);
         text.setPadding(20, 20, 20, 20);
 
-        int layoutFlag;
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            layoutFlag = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
-        } else {
-            layoutFlag = WindowManager.LayoutParams.TYPE_PHONE;
-        }
+        int layoutFlag = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            layoutFlag,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                layoutFlag,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT
         );
 
         params.gravity = Gravity.TOP | Gravity.START;
@@ -77,14 +79,28 @@ public class OverlayService extends Service {
         params.y = 200;
 
         overlayView = text;
-
         windowManager.addView(overlayView, params);
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    "call_channel",
+                    "Call Mining",
+                    NotificationManager.IMPORTANCE_LOW
+            );
+
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            manager.createNotificationChannel(channel);
+        }
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (overlayView != null) windowManager.removeView(overlayView);
+        if (overlayView != null && windowManager != null) {
+            windowManager.removeView(overlayView);
+        }
     }
 
     @Override

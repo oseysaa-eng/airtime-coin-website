@@ -4,7 +4,7 @@ import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build; // ✅ IMPORTANT
+import android.os.Build;
 
 import com.facebook.react.bridge.*;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
@@ -14,6 +14,7 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
     private TelephonyManager telephonyManager;
     private PhoneStateListener listener;
     private long callStartTime = 0;
+    private boolean isListening = false;
 
     public CallDetectorModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -24,7 +25,6 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
         return "CallDetector";
     }
 
-    // ✅ REQUIRED for EventEmitter (fix warning)
     @ReactMethod
     public void addListener(String eventName) {}
 
@@ -33,6 +33,9 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void start() {
+
+        if (isListening) return; // ✅ prevent duplicates
+        isListening = true;
 
         telephonyManager =
             (TelephonyManager) getReactApplicationContext()
@@ -48,16 +51,20 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
 
                     callStartTime = System.currentTimeMillis();
 
-                    // ✅ START OVERLAY SERVICE
-                    Intent intent = new Intent(
-                        getReactApplicationContext(),
-                        OverlayService.class
-                    );
+                    try {
+                        Intent intent = new Intent(
+                            getReactApplicationContext(),
+                            OverlayService.class
+                        );
 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        getReactApplicationContext().startForegroundService(intent);
-                    } else {
-                        getReactApplicationContext().startService(intent);
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            getReactApplicationContext().startForegroundService(intent);
+                        } else {
+                            getReactApplicationContext().startService(intent);
+                        }
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
 
                     sendEvent("CALL_STARTED", null);
@@ -66,11 +73,11 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
                 // 📞 CALL ENDED
                 if (state == TelephonyManager.CALL_STATE_IDLE && callStartTime != 0) {
 
-                    // ✅ STOP OVERLAY
                     Intent intent = new Intent(
                         getReactApplicationContext(),
                         OverlayService.class
                     );
+
                     getReactApplicationContext().stopService(intent);
 
                     long duration =
