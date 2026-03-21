@@ -24,27 +24,25 @@ public class OverlayService extends Service {
         createNotificationChannel();
     }
 
+
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
+public int onStartCommand(Intent intent, int flags, int startId) {
 
-        // ✅ FOREGROUND SERVICE (REQUIRED)
-        Notification notification = new NotificationCompat.Builder(this, "call_channel")
-                .setContentTitle("Call Mining Active")
-                .setContentText("Tracking your call...")
-                .setSmallIcon(android.R.drawable.sym_call_incoming)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .build();
+    Notification notification = new NotificationCompat.Builder(this, "call_channel")
+        .setContentTitle("Call Mining Active")
+        .setContentText("Tracking your call...")
+        .setSmallIcon(android.R.drawable.sym_call_incoming)
+        .setPriority(NotificationCompat.PRIORITY_LOW)
+        .build();
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL);
-        } else {
-            startForeground(1, notification);
-        }
+    // ✅ FIXED (NO phoneCall type)
+    startForeground(1, notification);
 
-        showOverlay();
+    showOverlay();
 
-        return START_STICKY;
-    }
+    return START_STICKY;
+}
+
 
     private void showOverlay() {
 
