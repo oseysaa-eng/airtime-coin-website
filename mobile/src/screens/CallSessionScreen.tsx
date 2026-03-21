@@ -7,18 +7,14 @@ import {
   PermissionsAndroid,
   Platform,
   Alert,
-  Linking
+  Linking,
+  NativeModules
 } from "react-native";
 import { LineChart } from "react-native-chart-kit";
 
 import API from "../api/api";
 import { initCallMining } from "../services/callDetector";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-
-
-
-
 
 
 /* ---------------- PERMISSION ---------------- */
@@ -70,13 +66,16 @@ export default function CallMiningScreen() {
     } catch {}
   };
 
-const requestOverlayPermission = () => {
-  if (Platform.OS !== "android") return;
+const requestOverlayPermission = async () => {
+  if (Platform.OS !== "android") return true;
 
-  Linking.openSettings(); // fallback
-
-  // Better option (deep link)
-  Linking.openURL("android.settings.action.MANAGE_OVERLAY_PERMISSION");
+  try {
+    // Try to open overlay settings properly
+    await Linking.openSettings(); 
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 
@@ -98,11 +97,11 @@ if (Platform.OS !== "android") return;
 
 
   /* ---------------- AUTO CALL DETECTOR ---------------- */
-useEffect(() => {
 
+useEffect(() => {
   const setup = async () => {
 
-    // 1️⃣ Request permissions
+    // ✅ 1. Phone permissions
     const hasPermission = await requestCallPermissions();
 
     if (!hasPermission) {
@@ -110,16 +109,31 @@ useEffect(() => {
       return;
     }
 
-    // 2️⃣ Ask overlay permission
-    requestOverlayPermission();
+    // ✅ 2. Ask overlay ONLY ONCE
+    const overlayAsked = await AsyncStorage.getItem("overlay_asked");
 
-    // 3️⃣ Ask accessibility (ONLY ONCE)
-    const asked = await AsyncStorage.getItem("accessibility_asked");
+    if (!overlayAsked) {
+      Alert.alert(
+        "Enable Overlay",
+        "Allow 'Appear on top' for call mining",
+        [
+          {
+            text: "Open Settings",
+            onPress: () => Linking.openSettings(),
+          },
+        ]
+      );
 
-    if (!asked) {
+      await AsyncStorage.setItem("overlay_asked", "true");
+    }
+
+    // ✅ 3. Ask accessibility ONLY ONCE
+    const accessAsked = await AsyncStorage.getItem("accessibility_asked");
+
+    if (!accessAsked) {
       Alert.alert(
         "Enable Call Mining",
-        "Turn on Accessibility Service for call detection",
+        "Turn on Accessibility Service",
         [
           {
             text: "Open Settings",
@@ -131,9 +145,8 @@ useEffect(() => {
       await AsyncStorage.setItem("accessibility_asked", "true");
     }
 
-    // 4️⃣ Start call mining
+    // ✅ 4. Start mining
     initCallMining(
-
       () => {
         setActive(true);
         setSeconds(0);
@@ -144,17 +157,19 @@ useEffect(() => {
       },
 
       async (duration: number) => {
-
         clearInterval(intervalRef.current);
         setActive(false);
 
-        await API.post("/api/call/auto-credit", {
-          seconds: duration
-        });
+        try {
+          await API.post("/api/call/auto-credit", {
+            seconds: duration,
+          });
+        } catch (e) {
+          console.log("API ERROR:", e);
+        }
 
         loadWeeklyCalls();
       }
-
     );
   };
 
@@ -163,9 +178,8 @@ useEffect(() => {
   return () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
   };
-
 }, []);
-  
+
 
   /* ---------------- UI ---------------- */
   return (

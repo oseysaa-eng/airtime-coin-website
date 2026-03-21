@@ -8,7 +8,6 @@ import android.os.IBinder;
 import android.provider.Settings;
 import android.view.*;
 import android.widget.TextView;
-import android.content.pm.ServiceInfo;
 
 import androidx.core.app.NotificationCompat;
 
@@ -20,36 +19,36 @@ public class OverlayService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-
         createNotificationChannel();
     }
 
-
     @Override
-public int onStartCommand(Intent intent, int flags, int startId) {
+    public int onStartCommand(Intent intent, int flags, int startId) {
 
-    Notification notification = new NotificationCompat.Builder(this, "call_channel")
-        .setContentTitle("Call Mining Active")
-        .setContentText("Tracking your call...")
-        .setSmallIcon(android.R.drawable.sym_call_incoming)
-        .setPriority(NotificationCompat.PRIORITY_LOW)
-        .build();
+        Notification notification = new NotificationCompat.Builder(this, "call_channel")
+                .setContentTitle("Call Mining Active")
+                .setContentText("Tracking your call...")
+                .setSmallIcon(android.R.drawable.sym_call_incoming)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build();
 
-    // ✅ FIXED (NO phoneCall type)
-    startForeground(1, notification);
+        // ✅ Correct foreground service
+        startForeground(1, notification);
 
-    showOverlay();
+        showOverlay();
 
-    return START_STICKY;
-}
-
+        return START_STICKY;
+    }
 
     private void showOverlay() {
 
         if (!Settings.canDrawOverlays(this)) {
+            android.util.Log.e("OVERLAY", "Permission NOT granted");
             stopSelf();
             return;
         }
+
+        android.util.Log.e("OVERLAY", "Permission GRANTED - showing overlay");
 
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
@@ -60,15 +59,20 @@ public int onStartCommand(Intent intent, int flags, int startId) {
         text.setTextColor(0xFFFFFFFF);
         text.setPadding(20, 20, 20, 20);
 
-        int layoutFlag = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE;
+        int layoutFlag;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            layoutFlag = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+        } else {
+            layoutFlag = WindowManager.LayoutParams.TYPE_PHONE;
+        }
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 layoutFlag,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT
         );
 
