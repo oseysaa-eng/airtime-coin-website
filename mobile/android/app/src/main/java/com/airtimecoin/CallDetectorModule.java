@@ -20,6 +20,15 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
     public String getName() {
         return "CallDetector";
     }
+     @ReactMethod
+    public void addListener(String eventName) {
+     // Required for RN built-in EventEmitter
+     }
+
+     @ReactMethod
+    public void removeListeners(Integer count) {
+    // Required for RN built-in EventEmitter
+    }
 
     @ReactMethod
     public void start() {
