@@ -6,13 +6,16 @@ import {
   View,
   PermissionsAndroid,
   Platform,
-  Alert
+  Alert,
+  Linking
 } from "react-native";
 import { LineChart } from "react-native-chart-kit";
 
 import API from "../api/api";
 import { initCallMining } from "../services/callDetector";
-import { Linking } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+
 
 
 
@@ -35,6 +38,7 @@ const requestCallPermissions = async () => {
     return false;
   }
 };
+
 
 
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -87,7 +91,88 @@ const requestOverlayPermission = async () => {
   );
 };
 
+const enableAccessibility = () => {
+  Alert.alert(
+    "Enable Call Mining",
+    "Turn on Accessibility Service for call detection",
+    [
+      {
+        text: "Open Settings",
+        onPress: () => {
+          Linking.openSettings();
+        },
+      },
+    ]
+  );
+};
+
+
   /* ---------------- AUTO CALL DETECTOR ---------------- */
+
+  
+
+useEffect(() => {
+
+  const setup = async () => {
+
+    const hasPermission = await requestCallPermissions();
+
+    if (!hasPermission) {
+      Alert.alert("Permission required");
+      return;
+    }
+
+    // ✅ Show accessibility prompt only once
+    const asked = await AsyncStorage.getItem("accessibility_asked");
+
+    if (!asked) {
+      Alert.alert(
+        "Enable Call Mining",
+        "Turn on Accessibility Service for call detection",
+        [
+          {
+            text: "Open Settings",
+            onPress: () => {
+              Linking.openSettings();
+            },
+          },
+        ]
+      );
+
+      await AsyncStorage.setItem("accessibility_asked", "true");
+    }
+
+    initCallMining(
+      () => {
+        setActive(true);
+        setSeconds(0);
+
+        intervalRef.current = setInterval(() => {
+          setSeconds((s) => s + 1);
+        }, 1000);
+      },
+      async (duration: number) => {
+        clearInterval(intervalRef.current);
+        setActive(false);
+
+        await API.post("/api/call/auto-credit", {
+          seconds: duration
+        });
+
+        loadWeeklyCalls();
+      }
+    );
+  };
+
+  setup();
+
+  return () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+  };
+
+}, []);
+
+
 
   useEffect(() => {
 
