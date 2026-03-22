@@ -1,25 +1,28 @@
-
 import { NativeModules, NativeEventEmitter } from "react-native";
 
 const { CallDetector } = NativeModules;
+const emitter = new NativeEventEmitter(CallDetector);
 
-export function initCallMining(onStart, onEnd) {
-  if (!CallDetector) {
-    console.warn("CallDetector not available — use dev build");
-    return;
-  }
+export const initCallMining = (onStart, onEnd) => {
 
-  const emitter = new NativeEventEmitter(CallDetector);
-
-  CallDetector.start();
+  emitter.removeAllListeners("CALL_STARTED");
+  emitter.removeAllListeners("CALL_ENDED");
 
   emitter.addListener("CALL_STARTED", () => {
     console.log("📞 CALL STARTED");
+
+    CallDetector.startOverlay(); // ✅ SAFE NOW
+
     onStart();
   });
 
   emitter.addListener("CALL_ENDED", (data) => {
-    console.log("📴 CALL ENDED", data);
+    console.log("📞 CALL ENDED");
+
+    CallDetector.stopOverlay(); // ✅ STOP SERVICE
+
     onEnd(data.duration);
   });
-}
+
+  CallDetector.start();
+};
