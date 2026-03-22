@@ -8,6 +8,7 @@ import android.os.IBinder;
 import android.provider.Settings;
 import android.view.*;
 import android.widget.TextView;
+import android.content.pm.ServiceInfo;
 
 import androidx.core.app.NotificationCompat;
 
@@ -23,20 +24,29 @@ public class OverlayService extends Service {
     }
 
     @Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
+public int onStartCommand(Intent intent, int flags, int startId) {
 
-        Notification notification = new NotificationCompat.Builder(this, "call_channel")
-                .setContentTitle("Call Mining Active")
-                .setContentText("Tracking your call...")
-                .setSmallIcon(android.R.drawable.sym_call_incoming)
-                .build();
+    Notification notification = new NotificationCompat.Builder(this, "call_channel")
+        .setContentTitle("Call Mining Active")
+        .setContentText("Tracking your call...")
+        .setSmallIcon(android.R.drawable.sym_call_incoming)
+        .setPriority(NotificationCompat.PRIORITY_LOW)
+        .build();
 
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        startForeground(
+            1,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE // ✅ FIX
+        );
+    } else {
         startForeground(1, notification);
-
-        showOverlay();
-
-        return START_STICKY;
     }
+
+    showOverlay();
+
+    return START_STICKY;
+}
 
     private void showOverlay() {
 
