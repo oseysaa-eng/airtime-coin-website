@@ -3,6 +3,8 @@ package com.airtimecoin.app;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import android.content.Context;
+import android.content.Intent; // ✅ ADD THIS
+import android.os.Build;
 
 import com.facebook.react.bridge.*;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
