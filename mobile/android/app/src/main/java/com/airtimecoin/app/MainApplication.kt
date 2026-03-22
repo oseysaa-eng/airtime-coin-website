@@ -15,19 +15,18 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
-import com.airtimecoin.app.CallDetectorPackage
-
-
 
 class MainApplication : Application(), ReactApplication {
 
   override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
       this,
       object : DefaultReactNativeHost(this) {
-      override fun getPackages(): List<ReactPackage> =
-    PackageList(this).packages.apply {
-        add(CallDetectorPackage())
-    }
+
+          override fun getPackages(): List<ReactPackage> {
+              val packages = PackageList(this).packages.toMutableList()
+              packages.add(CallDetectorPackage())
+              return packages
+          }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 
@@ -42,11 +41,13 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+
     DefaultNewArchitectureEntryPoint.releaseLevel = try {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
     } catch (e: IllegalArgumentException) {
       ReleaseLevel.STABLE
     }
+
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
   }
