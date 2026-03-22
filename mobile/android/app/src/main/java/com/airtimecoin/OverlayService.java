@@ -23,7 +23,7 @@ public class OverlayService extends Service {
         createNotificationChannel();
     }
 
-    @Override
+@Override
 public int onStartCommand(Intent intent, int flags, int startId) {
 
     Notification notification = new NotificationCompat.Builder(this, "call_channel")
@@ -33,15 +33,8 @@ public int onStartCommand(Intent intent, int flags, int startId) {
         .setPriority(NotificationCompat.PRIORITY_LOW)
         .build();
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        startForeground(
-            1,
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE // ✅ FIX
-        );
-    } else {
-        startForeground(1, notification);
-    }
+    // ✅ SAFE FOR ALL ANDROID VERSIONS
+    startForeground(1, notification);
 
     showOverlay();
 
