@@ -99,6 +99,8 @@ if (Platform.OS !== "android") return;
   /* ---------------- AUTO CALL DETECTOR ---------------- */
 
 useEffect(() => {
+  let cleanupMining: any;
+
   const setup = async () => {
 
     // ✅ 1. Phone permissions
@@ -109,7 +111,7 @@ useEffect(() => {
       return;
     }
 
-    // ✅ 2. Ask overlay ONLY ONCE
+    // ✅ 2. Overlay permission (better UX)
     const overlayAsked = await AsyncStorage.getItem("overlay_asked");
 
     if (!overlayAsked) {
@@ -127,7 +129,7 @@ useEffect(() => {
       await AsyncStorage.setItem("overlay_asked", "true");
     }
 
-    // ✅ 3. Ask accessibility ONLY ONCE
+    // ✅ 3. Accessibility permission
     const accessAsked = await AsyncStorage.getItem("accessibility_asked");
 
     if (!accessAsked) {
@@ -145,11 +147,13 @@ useEffect(() => {
       await AsyncStorage.setItem("accessibility_asked", "true");
     }
 
-    // ✅ 4. Start mining
-    initCallMining(
+    // ✅ 4. Start mining WITH cleanup
+    cleanupMining = initCallMining(
       () => {
         setActive(true);
         setSeconds(0);
+
+        if (intervalRef.current) clearInterval(intervalRef.current);
 
         intervalRef.current = setInterval(() => {
           setSeconds((s) => s + 1);
@@ -157,7 +161,10 @@ useEffect(() => {
       },
 
       async (duration: number) => {
-        clearInterval(intervalRef.current);
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+
         setActive(false);
 
         try {
@@ -176,7 +183,16 @@ useEffect(() => {
   setup();
 
   return () => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
+    console.log("🧹 Screen cleanup");
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    // ✅ VERY IMPORTANT
+    if (cleanupMining) {
+      cleanupMining();
+    }
   };
 }, []);
 

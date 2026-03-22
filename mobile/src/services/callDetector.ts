@@ -1,28 +1,46 @@
 import { NativeModules, NativeEventEmitter } from "react-native";
 
 const { CallDetector } = NativeModules;
-const emitter = new NativeEventEmitter(CallDetector);
+
+const emitter = CallDetector
+  ? new NativeEventEmitter(CallDetector)
+  : null;
 
 export const initCallMining = (onStart, onEnd) => {
+  if (!CallDetector || !emitter) {
+    console.warn("CallDetector native module not found");
+    return () => {};
+  }
 
-  emitter.removeAllListeners("CALL_STARTED");
-  emitter.removeAllListeners("CALL_ENDED");
+  console.log("✅ Call Mining Initialized");
 
-  emitter.addListener("CALL_STARTED", () => {
+  const startSub = emitter.addListener("CALL_STARTED", () => {
     console.log("📞 CALL STARTED");
 
-    CallDetector.startOverlay(); // ✅ SAFE NOW
-
-    onStart();
+    CallDetector.startOverlay();
+    onStart && onStart();
   });
 
-  emitter.addListener("CALL_ENDED", (data) => {
+  const endSub = emitter.addListener("CALL_ENDED", (data) => {
     console.log("📞 CALL ENDED");
 
-    CallDetector.stopOverlay(); // ✅ STOP SERVICE
-
-    onEnd(data.duration);
+    CallDetector.stopOverlay();
+    onEnd && onEnd(data?.duration || 0);
   });
 
   CallDetector.start();
+
+  // ✅ CLEANUP FUNCTION (VERY IMPORTANT)
+  return () => {
+    console.log("🧹 Cleaning Call Mining");
+
+    startSub.remove();
+    endSub.remove();
+
+    if (CallDetector.stopListening) {
+      CallDetector.stopListening();
+    }
+
+    CallDetector.stopOverlay();
+  };
 };

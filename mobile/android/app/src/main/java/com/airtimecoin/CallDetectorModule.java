@@ -3,8 +3,9 @@ package com.airtimecoin.app;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import android.content.Context;
-import android.content.Intent; // ✅ ADD THIS
+import android.content.Intent;
 import android.os.Build;
+import android.content.pm.PackageManager;
 
 import com.facebook.react.bridge.*;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
@@ -25,23 +26,31 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
         return "CallDetector";
     }
 
-    // ✅ Required for RN EventEmitter
     @ReactMethod
     public void addListener(String eventName) {}
 
     @ReactMethod
     public void removeListeners(Integer count) {}
 
-    // ✅ START LISTENING (NO SERVICE START HERE)
     @ReactMethod
     public void start() {
 
         if (isListening) return;
-        isListening = true;
+
+        // ✅ Permission check
+        if (getReactApplicationContext().checkSelfPermission(
+                android.Manifest.permission.READ_PHONE_STATE
+        ) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
 
         telephonyManager =
             (TelephonyManager) getReactApplicationContext()
             .getSystemService(Context.TELEPHONY_SERVICE);
+
+        if (telephonyManager == null) return;
+
+        isListening = true;
 
         listener = new PhoneStateListener() {
 
@@ -52,8 +61,6 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
                 if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
 
                     callStartTime = System.currentTimeMillis();
-
-                    // ❌ DO NOT start service here
                     sendEvent("CALL_STARTED", null);
                 }
 
@@ -79,17 +86,25 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
         );
     }
 
-    // ✅ START OVERLAY SERVICE (CALLED FROM JS)
+    // ✅ Stop listener (VERY IMPORTANT)
+    @ReactMethod
+    public void stopListening() {
+        if (telephonyManager != null && listener != null) {
+            telephonyManager.listen(listener, PhoneStateListener.LISTEN_NONE);
+            isListening = false;
+        }
+    }
+
+    // ✅ Start overlay
     @ReactMethod
     public void startOverlay() {
-
         try {
             Intent intent = new Intent(
                 getReactApplicationContext(),
                 OverlayService.class
             );
 
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 getReactApplicationContext().startForegroundService(intent);
             } else {
                 getReactApplicationContext().startService(intent);
@@ -100,10 +115,9 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
         }
     }
 
-    // ✅ STOP OVERLAY SERVICE (CALLED FROM JS)
+    // ✅ Stop overlay
     @ReactMethod
     public void stopOverlay() {
-
         try {
             Intent intent = new Intent(
                 getReactApplicationContext(),
