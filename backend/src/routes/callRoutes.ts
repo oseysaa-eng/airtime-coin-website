@@ -7,7 +7,7 @@ import Wallet from "../models/Wallet";
 import SystemSettings from "../models/SystemSettings";
 
 import { runCallFraudChecks } from "../services/callFraudEngine";
-import SpamNumber from "../models/SpamNumber.js";
+import SpamNumber from "../models/SpamNumber";
 
 const router = express.Router();
 
