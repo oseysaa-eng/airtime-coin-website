@@ -1,29 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-<uses-permission android:name="android.permission.INTERNET"/>
-<uses-permission android:name="android.permission.CAMERA"/>
-<uses-permission android:name="android.permission.RECORD_AUDIO"/>
-
-<!-- Contacts -->
-<uses-permission android:name="android.permission.READ_CONTACTS"/>
-<uses-permission android:name="android.permission.WRITE_CONTACTS"/>
-
-<!-- Call detection -->
-<uses-permission android:name="android.permission.READ_PHONE_STATE"/>
-<uses-permission android:name="android.permission.READ_CALL_LOG"/>
-
-<!-- Overlay -->
-<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
-
-<!-- Foreground service -->
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-
-<!-- Notifications -->
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-
-<!-- Optional -->
-<uses-permission android:name="android.permission.VIBRATE"/>
-<uses-permission android:name="android.permission.USE_BIOMETRIC"/>
-
+  <uses-permission android:name="android.permission.CAMERA"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.READ_CONTACTS"/>
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+  <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+  <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
+  <uses-permission android:name="android.permission.VIBRATE"/>
+  <uses-permission android:name="android.permission.WRITE_CONTACTS"/>
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>
@@ -38,22 +28,6 @@
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
-    <service android:name=".OverlayService" android:exported="false" />
-
-<service
-    android:name=".CallAccessibilityService"
-    android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-    android:exported="true">
-
-    <intent-filter>
-        <action android:name="android.accessibilityservice.AccessibilityService" />
-    </intent-filter>
-
-    <meta-data
-        android:name="android.accessibilityservice"
-        android:resource="@xml/accessibility_config" />
-</service>
-
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

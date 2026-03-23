@@ -21,12 +21,11 @@ class MainApplication : Application(), ReactApplication {
   override val reactNativeHost: ReactNativeHost = ReactNativeHostWrapper(
       this,
       object : DefaultReactNativeHost(this) {
-
-          override fun getPackages(): List<ReactPackage> {
-              val packages = PackageList(this).packages.toMutableList()
-              packages.add(CallDetectorPackage())
-              return packages
-          }
+        override fun getPackages(): List<ReactPackage> =
+            PackageList(this).packages.apply {
+              // Packages that cannot be autolinked yet can be added manually here, for example:
+              // add(MyReactNativePackage())
+            }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
 
@@ -41,13 +40,11 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
-
     DefaultNewArchitectureEntryPoint.releaseLevel = try {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
     } catch (e: IllegalArgumentException) {
       ReleaseLevel.STABLE
     }
-
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
   }
