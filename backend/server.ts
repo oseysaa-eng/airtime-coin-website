@@ -8,6 +8,7 @@ import { Server as IOServer } from "socket.io";
 import connectDB from "./src/config/db";
 import { trustRecoveryJob } from "./src/jobs/trustRecoveryJob";
 import SystemSettings from "./src/models/SystemSettings";
+import CallSession from "./src/models/CallSession";
 
 import { setupSocket } from "./src/sockets/socket";
 import { setupSupportSocket } from "./src/sockets/supportSocket";
@@ -200,6 +201,88 @@ const io = new IOServer(server, {
 });
 
 app.set("io", io);
+
+
+io.on("connection", (socket) => {
+  console.log("🔌 Socket connected:", socket.id);
+
+  /* ================================
+     CALL START
+  ================================= */
+  socket.on("call_start", async (data) => {
+    try {
+      if (!data?.sessionId) {
+        console.log("❌ Missing sessionId");
+        return;
+      }
+
+      // ✅ Prevent duplicate session
+      const existing = await CallSession.findOne({
+        sessionId: data.sessionId,
+      });
+
+      if (existing) {
+        console.log("⚠️ Duplicate session ignored:", data.sessionId);
+        return;
+      }
+
+      await CallSession.create({
+        sessionId: data.sessionId,
+        number: data.number || "unknown",
+        startTime: new Date(),
+      });
+
+      console.log("✅ Call session started:", data.sessionId);
+
+    } catch (err: any) {
+      console.log("START ERROR:", err.message);
+    }
+  });
+
+  /* ================================
+     CALL END
+  ================================= */
+  socket.on("call_end", async (data) => {
+    try {
+      if (!data?.sessionId) {
+        console.log("❌ Missing sessionId on end");
+        return;
+      }
+
+      const session = await CallSession.findOne({
+        sessionId: data.sessionId,
+      });
+
+      if (!session) {
+        console.log("⚠️ Session not found:", data.sessionId);
+        return;
+      }
+
+      // ✅ Prevent double end update
+      if (session.endTime) {
+        console.log("⚠️ Already ended:", data.sessionId);
+        return;
+      }
+
+      await CallSession.updateOne(
+        { sessionId: data.sessionId },
+        {
+          endTime: new Date(),
+          duration: data.duration || 0,
+        }
+      );
+
+      console.log("✅ Call session ended:", data.sessionId);
+
+    } catch (err: any) {
+      console.log("END ERROR:", err.message);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log("🔴 Socket disconnected:", socket.id);
+  });
+});
 
 /* ───────────────────────── INITIALIZE SOCKETS ───────────────────────── */
 

@@ -1,4 +1,5 @@
 import { NativeModules, NativeEventEmitter } from "react-native";
+import { v4 as uuidv4 } from "uuid";
 
 const { CallDetector } = NativeModules;
 
@@ -6,12 +7,13 @@ const emitter = CallDetector
   ? new NativeEventEmitter(CallDetector)
   : null;
 
-const API_URL = "https://atc-backend-cn4f.onrender.com"; // ✅ FIX THIS
+const API_URL = "https://atc-backend-cn4f.onrender.com";
 
 let isOverlayRunning = false;
-let currentNumber = null; // ✅ prevent duplicate checks
+let currentNumber = null;
 
 export const initCallMining = (onStart, onEnd) => {
+  let sessionId = null;
 
   if (!CallDetector || !emitter) {
     console.warn("❌ CallDetector not found");
@@ -36,6 +38,9 @@ export const initCallMining = (onStart, onEnd) => {
     const number = data.number || "Unknown";
     const photo = data.photo || null;
 
+    // ✅ GENERATE SESSION ID (CRITICAL FIX)
+    sessionId = uuidv4();
+
     // ✅ Prevent duplicate processing
     if (currentNumber === number) return;
     currentNumber = number;
@@ -50,11 +55,20 @@ export const initCallMining = (onStart, onEnd) => {
       }
     }
 
-    /* ---------- SPAM CHECK (ASYNC) ---------- */
+    /* ---------- SEND TO BACKEND ---------- */
     try {
+      global.socket?.emit("call_start", {
+        sessionId,
+        number,
+      });
+    } catch (e) {
+      console.log("Socket start error:", e);
+    }
 
+    /* ---------- SPAM CHECK ---------- */
+    try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      const timeout = setTimeout(() => controller.abort(), 5000);
 
       const res = await fetch(`${API_URL}/api/call/check-number`, {
         method: "POST",
@@ -62,14 +76,13 @@ export const initCallMining = (onStart, onEnd) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ number }),
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeout);
 
       const result = await res.json();
 
-      // ✅ Only update if still same call
       if (currentNumber === number) {
         CallDetector.updateOverlay(result.status);
       }
@@ -77,13 +90,12 @@ export const initCallMining = (onStart, onEnd) => {
     } catch (e) {
       console.log("⚠️ Spam check error:", e);
 
-      // fallback → mark as unknown
       try {
         CallDetector.updateOverlay("unknown");
       } catch {}
     }
 
-    if (onStart) onStart(data);
+    onStart && onStart(data);
   });
 
   /* ================================
@@ -98,14 +110,25 @@ export const initCallMining = (onStart, onEnd) => {
       console.log("Overlay stop error:", e);
     }
 
+    /* ---------- SEND END EVENT ---------- */
+    try {
+      global.socket?.emit("call_end", {
+        sessionId,
+        duration: data?.duration || 0,
+      });
+    } catch (e) {
+      console.log("Socket end error:", e);
+    }
+
+    sessionId = null;
     isOverlayRunning = false;
     currentNumber = null;
 
-    if (onEnd) onEnd(data.duration || 0);
+    onEnd && onEnd(data?.duration || 0);
   });
 
   /* ================================
-     START NATIVE LISTENER
+     START LISTENER
   ================================= */
   try {
     CallDetector.start();
@@ -126,10 +149,7 @@ export const initCallMining = (onStart, onEnd) => {
       emitter.removeAllListeners("CALL_STARTED");
       emitter.removeAllListeners("CALL_ENDED");
 
-      if (CallDetector.stopListening) {
-        CallDetector.stopListening();
-      }
-
+      CallDetector.stopListening?.();
       CallDetector.stopOverlay();
 
     } catch (e) {
