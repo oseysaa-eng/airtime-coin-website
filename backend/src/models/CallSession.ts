@@ -1,36 +1,48 @@
 import mongoose from "mongoose";
 
-const CallSessionSchema = new mongoose.Schema({
-  userId: { type: mongoose.Types.ObjectId, index: true },
+const CallSessionSchema = new mongoose.Schema(
+{
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    index: true,
+    required: true,
+  },
 
-    sessionId: {
+  sessionId: {
     type: String,
     required: true,
     unique: true,
+    index: true,
   },
-   startTime: Date,
-  endTime: Date,
-
-  deviceId: mongoose.Types.ObjectId,
 
   phoneNumber: String,
 
-  durationSeconds: Number,
+  startTime: Date,
+  endTime: Date,
 
-  creditedMinutes: Number,
+  durationSeconds: {
+    type: Number,
+    default: 0,
+  },
+
+  creditedATC: {
+    type: Number,
+    default: 0,
+  },
+
+  deviceId: mongoose.Schema.Types.ObjectId,
 
   status: {
     type: String,
     enum: ["valid", "rejected", "fraud"],
-    default: "valid"
+    default: "valid",
   },
 
   reason: String,
 
-}, { timestamps: true });
+},
+{ timestamps: true }
+);
 
 export default mongoose.model("CallSession", CallSessionSchema);
-
-
-
-
