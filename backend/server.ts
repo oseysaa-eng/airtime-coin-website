@@ -14,6 +14,7 @@ import { setupSocket } from "./src/sockets/socket";
 import { setupSupportSocket } from "./src/sockets/supportSocket";
 import { registerAdminEmitter } from "./src/utils/adminEmitter";
 import { apiLimiter } from "./src/middleware/rateLimiter";
+import { processCallEarning } from "./src/services/callEarningService";
 
 
 
@@ -211,75 +212,49 @@ io.on("connection", (socket) => {
   /* ================================
      CALL START
   ================================= */
-  socket.on("call_start", async (data) => {
-    try {
-      if (!data?.sessionId) {
-        console.log("❌ Missing sessionId");
-        return;
-      }
+socket.on("call_start", async (data) => {
+  try {
+    if (!data.sessionId) return;
 
-      // ✅ Prevent duplicate session
-      const existing = await CallSession.findOne({
-        sessionId: data.sessionId,
-      });
+    await CallSession.create({
+      sessionId: data.sessionId,
+      userId: socket.userId,
+      phoneNumber: data.number,
+      startTime: new Date(),
+    });
 
-      if (existing) {
-        console.log("⚠️ Duplicate session ignored:", data.sessionId);
-        return;
-      }
-
-      await CallSession.create({
-        sessionId: data.sessionId,
-        number: data.number || "unknown",
-        startTime: new Date(),
-      });
-
-      console.log("✅ Call session started:", data.sessionId);
-
-    } catch (err: any) {
-      console.log("START ERROR:", err.message);
-    }
-  });
+    console.log("✅ Call session started:", data.sessionId);
+  } catch (err: any) {
+    console.log("START ERROR:", err.message);
+  }
+});
 
   /* ================================
      CALL END
   ================================= */
+  
   socket.on("call_end", async (data) => {
-    try {
-      if (!data?.sessionId) {
-        console.log("❌ Missing sessionId on end");
-        return;
-      }
+  try {
+    if (!data.sessionId) return;
 
-      const session = await CallSession.findOne({
-        sessionId: data.sessionId,
-      });
+    const session = await CallSession.findOneAndUpdate(
+      { sessionId: data.sessionId },
+      {
+        endTime: new Date(),
+        durationSeconds: data.duration,
+      },
+      { new: true }
+    );
 
-      if (!session) {
-        console.log("⚠️ Session not found:", data.sessionId);
-        return;
-      }
-
-      // ✅ Prevent double end update
-      if (session.endTime) {
-        console.log("⚠️ Already ended:", data.sessionId);
-        return;
-      }
-
-      await CallSession.updateOne(
-        { sessionId: data.sessionId },
-        {
-          endTime: new Date(),
-          duration: data.duration || 0,
-        }
-      );
-
-      console.log("✅ Call session ended:", data.sessionId);
-
-    } catch (err: any) {
-      console.log("END ERROR:", err.message);
+    if (session) {
+      await processCallEarning(data.sessionId);
     }
-  });
+
+    console.log("✅ Call session ended:", data.sessionId);
+  } catch (err: any) {
+    console.log("END ERROR:", err.message);
+  }
+});
 
   socket.on("disconnect", () => {
     console.log("🔴 Socket disconnected:", socket.id);
