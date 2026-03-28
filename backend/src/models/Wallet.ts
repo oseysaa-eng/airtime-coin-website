@@ -25,8 +25,6 @@ const WalletSchema = new mongoose.Schema(
   },
 
   lastDailyReset: { type: Date, default: Date.now },
-  lastEarningReset: { type: Date, default: Date.now }
-
 },
 { timestamps: true }
 );
