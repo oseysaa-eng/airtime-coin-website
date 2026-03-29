@@ -128,31 +128,30 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
     ===================================================== */
 
     @ReactMethod
-    public void startOverlay(String name, String number, String photo, String spamStatus) {
+public void startOverlay(String name, String number, String photo, String spamStatus) {
+    Log.d("OVERLAY_DEBUG", "🔥 OVERLAY TRIGGER CALLED");
 
-        try {
-            Intent intent = new Intent(
-                    getReactApplicationContext(),
-                    OverlayService.class
-            );
+    try {
+        Intent intent = new Intent(
+                getReactApplicationContext(),
+                OverlayService.class
+        );
 
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.putExtra("name", name);
+        intent.putExtra("number", number);
+        intent.putExtra("photo", photo);
+        intent.putExtra("spam", spamStatus);
 
-            intent.putExtra("name", name);
-            intent.putExtra("number", number);
-            intent.putExtra("photo", photo);
-            intent.putExtra("spam", spamStatus);
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                getReactApplicationContext().startService(intent);
-            } else {
-                getReactApplicationContext().startService(intent);
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getReactApplicationContext().startForegroundService(intent); // ✅ FIX
+        } else {
+            getReactApplicationContext().startService(intent);
         }
+
+    } catch (Exception e) {
+        e.printStackTrace();
     }
+}
 
     /* =====================================================
        UPDATE OVERLAY
@@ -165,6 +164,8 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
                     getReactApplicationContext(),
                     OverlayService.class
             );
+
+
 
             intent.putExtra("updateSpam", spamStatus);
 
@@ -179,23 +180,23 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
        STOP OVERLAY
     ===================================================== */
 
-    @ReactMethod
-    public void stopOverlay() {
-        try {
-            Intent intent = new Intent(
-                    getReactApplicationContext(),
-                    OverlayService.class
-            );
+@ReactMethod
+public void stopOverlay() {
+    try {
+        Intent intent = new Intent(
+                getReactApplicationContext(),
+                OverlayService.class
+        );
 
-            intent.putExtra("stop", true);
+        intent.putExtra("stop", true);
 
-            getReactApplicationContext().stopService(intent);
-            
+        // ✅ IMPORTANT: DO NOT use startForegroundService here
+        getReactApplicationContext().startService(intent);
 
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    } catch (Exception e) {
+        e.printStackTrace();
     }
+}
 
     /* =====================================================
        CONTACT RESOLVER (SAFE)
