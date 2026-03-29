@@ -126,8 +126,7 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
     /* =====================================================
        START OVERLAY
     ===================================================== */
-
-    @ReactMethod
+@ReactMethod
 public void startOverlay(String name, String number, String photo, String spamStatus) {
     Log.d("OVERLAY_DEBUG", "🔥 OVERLAY TRIGGER CALLED");
 
@@ -143,7 +142,7 @@ public void startOverlay(String name, String number, String photo, String spamSt
         intent.putExtra("spam", spamStatus);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            getReactApplicationContext().startForegroundService(intent); // ✅ FIX
+            getReactApplicationContext().startForegroundService(intent); // ✅ CORRECT
         } else {
             getReactApplicationContext().startService(intent);
         }
@@ -179,7 +178,6 @@ public void startOverlay(String name, String number, String photo, String spamSt
     /* =====================================================
        STOP OVERLAY
     ===================================================== */
-
 @ReactMethod
 public void stopOverlay() {
     try {
@@ -190,8 +188,7 @@ public void stopOverlay() {
 
         intent.putExtra("stop", true);
 
-        // ✅ IMPORTANT: DO NOT use startForegroundService here
-        getReactApplicationContext().startService(intent);
+        getReactApplicationContext().startService(intent); // ✅ NOT foreground
 
     } catch (Exception e) {
         e.printStackTrace();

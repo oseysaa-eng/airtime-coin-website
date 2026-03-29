@@ -2,8 +2,7 @@ package com.airtimecoin.app;
 
 import android.accessibilityservice.AccessibilityService;
 import android.view.accessibility.AccessibilityEvent;
-import android.content.Intent;
-import android.os.Build;
+import android.util.Log;
 
 public class CallAccessibilityService extends AccessibilityService {
 
@@ -12,26 +11,22 @@ public class CallAccessibilityService extends AccessibilityService {
 
         if (event == null) return;
 
-        int type = event.getEventType();
-
-        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
 
             CharSequence pkg = event.getPackageName();
 
-            if (pkg != null && pkg.toString().contains("com.android.dialer")) {
+            if (pkg == null) return;
 
-                // 🚀 CALL SCREEN DETECTED
-                Intent intent = new Intent(this, OverlayService.class);
-                intent.putExtra("name", "Incoming Call");
-                intent.putExtra("number", "Detecting...");
-                intent.putExtra("spam", "checking");
+            String packageName = pkg.toString();
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-    startService(intent);
-} else {
-    startService(intent);
-}
+            if (
+                packageName.contains("dialer") ||
+                packageName.contains("call") ||
+                packageName.contains("incallui")
+            ) {
+                Log.d("CALL_DEBUG", "📲 Call UI detected: " + packageName);
 
+                // 🚫 DO NOT start overlay here
             }
         }
     }
