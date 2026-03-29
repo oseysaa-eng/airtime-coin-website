@@ -10,6 +10,11 @@ import android.os.*;
 import android.provider.Settings;
 import android.view.*;
 import android.widget.*;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import androidx.core.app.NotificationCompat;
+import android.util.Log;
 
 public class OverlayService extends Service {
 
@@ -38,23 +43,27 @@ public class OverlayService extends Service {
             return START_STICKY;
         }
 
-                if (intent.hasExtra("stop")) {
-            stopSelf();
-            return START_NOT_STICKY;
-        }
+        if (intent.hasExtra("stop")) {
+    stopForeground(true); // ✅ REQUIRED
+    stopSelf();
+    return START_NOT_STICKY;
+}
+
+        startForeground(1, buildNotification());
 
         showOverlay(
                 intent.getStringExtra("name"),
                 intent.getStringExtra("number"),
                 intent.getStringExtra("photo"),
                 intent.getStringExtra("spam")
+                
         );
 
         return START_STICKY;
     }
 
     private void showOverlay(String name, String number, String photo, String spam) {
-
+Log.d("OVERLAY_DEBUG", "🚀 showOverlay called");
         try {
 
             if (!Settings.canDrawOverlays(this)) return;
@@ -81,12 +90,14 @@ public class OverlayService extends Service {
                     : WindowManager.LayoutParams.TYPE_PHONE;
 
             WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    type,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                    PixelFormat.TRANSLUCENT
-            );
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        type,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+        PixelFormat.TRANSLUCENT
+);
 
             params.gravity = Gravity.TOP | Gravity.END;
             params.x = 30;
@@ -123,6 +134,7 @@ public class OverlayService extends Service {
             expandedView.addView(spamTagView);
             expandedView.addView(timerView);
             expandedView.addView(earningsView);
+            
 
             windowManager.addView(expandedView, params);
 
@@ -150,6 +162,30 @@ public class OverlayService extends Service {
             e.printStackTrace();
         }
     }
+
+    private Notification buildNotification() {
+
+    String channelId = "overlay_channel";
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        NotificationChannel channel = new NotificationChannel(
+                channelId,
+                "Overlay Service",
+                NotificationManager.IMPORTANCE_LOW
+        );
+
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) {
+            manager.createNotificationChannel(channel);
+        }
+    }
+
+    return new NotificationCompat.Builder(this, channelId)
+            .setContentTitle("ATC Call Mining")
+            .setContentText("Running...")
+            .setSmallIcon(android.R.drawable.sym_call_incoming)
+            .build();
+}
 
 
     @Override
