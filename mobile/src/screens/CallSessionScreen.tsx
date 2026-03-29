@@ -150,25 +150,14 @@ export default function CallMiningScreen() {
           }, 1000);
         },
 
-        async (duration: number) => {
+        async () => {
+          // ❌ REMOVED auto-credit call
           if (intervalRef.current) clearInterval(intervalRef.current);
 
           setActive(false);
           setCaller(null);
 
-          try {
-            await API.post("/api/call/auto-credit", {
-              seconds: duration,
-            });
-          } catch {
-            // retry silently
-            setTimeout(() => {
-              API.post("/api/call/auto-credit", {
-                seconds: duration,
-              }).catch(() => {});
-            }, 3000);
-          }
-
+          // ✅ Just refresh stats
           loadWeeklyCalls();
         }
       );
@@ -200,7 +189,6 @@ export default function CallMiningScreen() {
             {caller.number} • {caller.isSaved ? "Saved" : "Unknown"}
           </Text>
 
-          {/* 🔥 SPAM STATUS */}
           {caller.spamStatus !== "safe" && (
             <Text
               style={{

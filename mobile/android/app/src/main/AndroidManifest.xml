@@ -17,6 +17,7 @@
 
 <!-- Foreground service -->
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
 
 <!-- Notifications -->
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -42,9 +43,11 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
 
- <service
+    <service
     android:name=".OverlayService"
-    android:exported="false" />
+    android:exported="false"
+    android:foregroundServiceType="dataSync" />
+
 <service
     android:name=".CallAccessibilityService"
     android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
