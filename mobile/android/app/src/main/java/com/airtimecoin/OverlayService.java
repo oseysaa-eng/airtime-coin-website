@@ -35,7 +35,7 @@ public class OverlayService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-
+        
         if (intent == null) return START_STICKY;
 
         if (intent.hasExtra("updateSpam")) {
@@ -49,8 +49,7 @@ public class OverlayService extends Service {
     return START_NOT_STICKY;
 }
 
-        startForeground(1, buildNotification());
-
+ startForeground(1, buildNotification());
         showOverlay(
                 intent.getStringExtra("name"),
                 intent.getStringExtra("number"),
