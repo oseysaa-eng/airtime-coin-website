@@ -116,6 +116,17 @@ export default function CallMiningScreen() {
         await AsyncStorage.setItem("overlay_asked", "true");
       }
 
+          Alert.alert(
+      "Disable Battery Optimization",
+      "Allow app to run in background for call mining",
+      [
+        {
+          text: "Open Settings",
+          onPress: () => Linking.openSettings(),
+        },
+      ]
+    );
+
       /* -------- Accessibility -------- */
       const accessAsked = await AsyncStorage.getItem("accessibility_asked");
 
