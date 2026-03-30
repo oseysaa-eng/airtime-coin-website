@@ -3,9 +3,7 @@ package com.airtimecoin.app;
 import android.app.Service;
 import android.content.Intent;
 import android.graphics.PixelFormat;
-import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.*;
 import android.provider.Settings;
 import android.view.*;
@@ -35,8 +33,14 @@ public class OverlayService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        
+
         if (intent == null) return START_STICKY;
+
+        try {
+            startForeground(1, buildNotification()); // ✅ REQUIRED
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         if (intent.hasExtra("updateSpam")) {
             updateSpamUI(intent.getStringExtra("updateSpam"));
@@ -44,33 +48,54 @@ public class OverlayService extends Service {
         }
 
         if (intent.hasExtra("stop")) {
-    stopForeground(true); // ✅ REQUIRED
-    stopSelf();
-    return START_NOT_STICKY;
-}
+            stopForeground(true);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
 
- startForeground(1, buildNotification());
         showOverlay(
                 intent.getStringExtra("name"),
                 intent.getStringExtra("number"),
                 intent.getStringExtra("photo"),
                 intent.getStringExtra("spam")
-                
         );
 
         return START_STICKY;
     }
 
     private void showOverlay(String name, String number, String photo, String spam) {
-Log.d("OVERLAY_DEBUG", "🚀 showOverlay called");
+
+        Log.d("OVERLAY_DEBUG", "🚀 showOverlay called");
+
         try {
 
             if (!Settings.canDrawOverlays(this)) return;
 
-            if (overlayView != null) return;
+            if (overlayView != null) return; // ✅ prevent duplicate
 
             windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
+            int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    : WindowManager.LayoutParams.TYPE_PHONE;
+
+            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    type,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                            | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                    PixelFormat.TRANSLUCENT
+            );
+
+            params.gravity = Gravity.TOP | Gravity.END;
+            params.x = 30;
+            params.y = 200;
+
+            /* =========================
+               CREATE BUBBLE
+            ========================= */
             TextView bubble = new TextView(this);
             bubble.setText("📞");
             bubble.setTextSize(22);
@@ -84,27 +109,9 @@ Log.d("OVERLAY_DEBUG", "🚀 showOverlay called");
 
             overlayView = bubble;
 
-            int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                    : WindowManager.LayoutParams.TYPE_PHONE;
-
-            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-        WindowManager.LayoutParams.WRAP_CONTENT,
-        WindowManager.LayoutParams.WRAP_CONTENT,
-        type,
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-        PixelFormat.TRANSLUCENT
-);
-
-            params.gravity = Gravity.TOP | Gravity.END;
-            params.x = 30;
-            params.y = 200;
-
-            windowManager.addView(overlayView, params);
-
-            // EXPANDED VIEW
+            /* =========================
+               CREATE EXPANDED VIEW
+            ========================= */
             expandedView = new LinearLayout(this);
             expandedView.setOrientation(LinearLayout.VERTICAL);
             expandedView.setPadding(40, 30, 40, 30);
@@ -133,25 +140,43 @@ Log.d("OVERLAY_DEBUG", "🚀 showOverlay called");
             expandedView.addView(spamTagView);
             expandedView.addView(timerView);
             expandedView.addView(earningsView);
-            
 
-            windowManager.addView(expandedView, params);
+            /* =========================
+               ADD VIEWS (ONLY ONCE)
+            ========================= */
+            handler.postDelayed(() -> {
+                try {
+                    if (overlayView.getParent() == null) {
+                        windowManager.addView(overlayView, params);
+                    }
+                    if (expandedView.getParent() == null) {
+                        windowManager.addView(expandedView, params);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }, 300);
 
+            /* =========================
+               CLICK TO EXPAND
+            ========================= */
             bubble.setOnClickListener(v -> {
                 isExpanded = !isExpanded;
                 expandedView.setVisibility(isExpanded ? View.VISIBLE : View.GONE);
                 bubble.setVisibility(isExpanded ? View.GONE : View.VISIBLE);
             });
-            
 
+            /* =========================
+               TIMER LOOP
+            ========================= */
             handler.post(new Runnable() {
                 @Override
                 public void run() {
                     seconds++;
                     earningsValue += 0.001;
 
-                    timerView.setText("⏱ " + seconds);
-                    earningsView.setText("💰 " + earningsValue);
+                    timerView.setText("⏱ " + seconds + "s");
+                    earningsView.setText("💰 " + String.format("%.4f", earningsValue));
 
                     handler.postDelayed(this, 1000);
                 }
@@ -164,55 +189,50 @@ Log.d("OVERLAY_DEBUG", "🚀 showOverlay called");
 
     private Notification buildNotification() {
 
-    String channelId = "overlay_channel";
+        String channelId = "overlay_channel";
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        NotificationChannel channel = new NotificationChannel(
-                channelId,
-                "Overlay Service",
-                NotificationManager.IMPORTANCE_LOW
-        );
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    channelId,
+                    "Overlay Service",
+                    NotificationManager.IMPORTANCE_LOW
+            );
 
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        if (manager != null) {
-            manager.createNotificationChannel(channel);
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
         }
+
+        return new NotificationCompat.Builder(this, channelId)
+                .setContentTitle("ATC Call Mining")
+                .setContentText("Running...")
+                .setSmallIcon(android.R.drawable.sym_call_incoming)
+                .build();
     }
-
-    return new NotificationCompat.Builder(this, channelId)
-            .setContentTitle("ATC Call Mining")
-            .setContentText("Running...")
-            .setSmallIcon(android.R.drawable.sym_call_incoming)
-            .build();
-}
-
 
     @Override
-public void onDestroy() {
-    super.onDestroy();
+    public void onDestroy() {
+        super.onDestroy();
 
-    handler.removeCallbacksAndMessages(null);
+        handler.removeCallbacksAndMessages(null);
 
-    try {
-        if (windowManager != null) {
-            if (overlayView != null) {
-                windowManager.removeView(overlayView);
-                overlayView = null;
+        try {
+            if (windowManager != null) {
+                if (overlayView != null && overlayView.getParent() != null) {
+                    windowManager.removeView(overlayView);
+                }
+                if (expandedView != null && expandedView.getParent() != null) {
+                    windowManager.removeView(expandedView);
+                }
             }
-            if (expandedView != null) {
-                windowManager.removeView(expandedView);
-                expandedView = null;
-            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-    } catch (Exception e) {
-        e.printStackTrace();
     }
-}
-
 
     private void updateSpamUI(String status) {
         if (spamTagView == null) return;
-
         spamTagView.setText(status != null ? status : "Safe");
     }
 
@@ -221,4 +241,3 @@ public void onDestroy() {
         return null;
     }
 }
-

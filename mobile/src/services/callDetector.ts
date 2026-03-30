@@ -11,9 +11,9 @@ const API_URL = "https://atc-backend-cn4f.onrender.com";
 
 let isOverlayRunning = false;
 let currentNumber = null;
+let activeSessionId = null; // ✅ GLOBAL SESSION TRACK
 
 export const initCallMining = (onStart, onEnd) => {
-  let sessionId = null;
 
   if (!CallDetector || !emitter) {
     console.warn("❌ CallDetector not found");
@@ -38,14 +38,17 @@ export const initCallMining = (onStart, onEnd) => {
     const number = data.number || "Unknown";
     const photo = data.photo || null;
 
-    // ✅ GENERATE SESSION ID (CRITICAL FIX)
-    sessionId = uuidv4();
+    // 🚫 BLOCK DUPLICATES PROPERLY
+    if (currentNumber === number && activeSessionId) {
+      console.log("⚠️ Duplicate call ignored");
+      return;
+    }
 
-    // ✅ Prevent duplicate processing
-    if (currentNumber === number) return;
+    // ✅ CREATE SESSION ONLY ONCE
+    activeSessionId = uuidv4();
     currentNumber = number;
 
-    /* ---------- START OVERLAY FAST ---------- */
+    /* ---------- START OVERLAY ---------- */
     if (!isOverlayRunning) {
       try {
         CallDetector.startOverlay(name, number, photo, "checking");
@@ -58,7 +61,7 @@ export const initCallMining = (onStart, onEnd) => {
     /* ---------- SEND TO BACKEND ---------- */
     try {
       global.socket?.emit("call_start", {
-        sessionId,
+        sessionId: activeSessionId,
         number,
       });
     } catch (e) {
@@ -72,9 +75,7 @@ export const initCallMining = (onStart, onEnd) => {
 
       const res = await fetch(`${API_URL}/api/call/check-number`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ number }),
         signal: controller.signal,
       });
@@ -104,27 +105,39 @@ export const initCallMining = (onStart, onEnd) => {
   const endSub = emitter.addListener("CALL_ENDED", (data = {}) => {
     console.log("📞 CALL ENDED");
 
-    try {
-      CallDetector.stopOverlay();
-    } catch (e) {
-      console.log("Overlay stop error:", e);
+    const duration = data?.duration || 0;
+
+    // ❌ NO SESSION → IGNORE (prevents backend crash)
+    if (!activeSessionId) {
+      console.log("⚠️ No active session, skipping");
+      return;
     }
+
+    /* ---------- DELAY OVERLAY STOP ---------- */
+    setTimeout(() => {
+      try {
+        CallDetector.stopOverlay();
+      } catch (e) {
+        console.log("Overlay stop error:", e);
+      }
+    }, 2000);
 
     /* ---------- SEND END EVENT ---------- */
     try {
       global.socket?.emit("call_end", {
-        sessionId,
-        duration: data?.duration || 0,
+        sessionId: activeSessionId,
+        duration,
       });
     } catch (e) {
       console.log("Socket end error:", e);
     }
 
-    sessionId = null;
+    // ✅ RESET STATE SAFELY
+    activeSessionId = null;
     isOverlayRunning = false;
     currentNumber = null;
 
-    onEnd && onEnd(data?.duration || 0);
+    onEnd && onEnd(duration);
   });
 
   /* ================================
@@ -156,6 +169,7 @@ export const initCallMining = (onStart, onEnd) => {
       console.log("Cleanup error:", e);
     }
 
+    activeSessionId = null;
     isOverlayRunning = false;
     currentNumber = null;
   };

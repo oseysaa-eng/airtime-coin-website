@@ -4,17 +4,19 @@ import express from "express";
 import http from "http";
 import path from "path";
 import { Server as IOServer } from "socket.io";
+import jwt from "jsonwebtoken";
 
 import connectDB from "./src/config/db";
 import { trustRecoveryJob } from "./src/jobs/trustRecoveryJob";
 import SystemSettings from "./src/models/SystemSettings";
-import CallSession from "./src/models/CallSession";
+
 
 import { setupSocket } from "./src/sockets/socket";
 import { setupSupportSocket } from "./src/sockets/supportSocket";
 import { registerAdminEmitter } from "./src/utils/adminEmitter";
 import { apiLimiter } from "./src/middleware/rateLimiter";
-import { processCallEarning } from "./src/services/callEarningService";
+import { registerCallHandlers } from "./src/sockets/callHandlers";
+
 
 
 
@@ -205,61 +207,41 @@ const io = new IOServer(server, {
 
 app.set("io", io);
 
-
-io.on("connection", (socket) => {
-  console.log("🔌 Socket connected:", socket.id);
-
-  /* ================================
-     CALL START
-  ================================= */
-socket.on("call_start", async (data) => {
+/* =========================
+   AUTH MIDDLEWARE (MUST BE FIRST)
+========================= */
+io.use((socket: any, next) => {
   try {
-    if (!data.sessionId) return;
+    const token = socket.handshake.auth?.token;
 
-    await CallSession.create({
-      sessionId: data.sessionId,
-      userId: socket.userId,
-      phoneNumber: data.number,
-      startTime: new Date(),
-    });
+    if (!token) return next(new Error("No token"));
 
-    console.log("✅ Call session started:", data.sessionId);
-  } catch (err: any) {
-    console.log("START ERROR:", err.message);
+    const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
+
+    socket.userId = decoded.id;
+
+    next();
+
+  } catch (err) {
+    next(new Error("Unauthorized"));
   }
 });
 
-  /* ================================
-     CALL END
-  ================================= */
-  
-  socket.on("call_end", async (data) => {
-  try {
-    if (!data.sessionId) return;
+/* =========================
+   SINGLE CONNECTION HANDLER
+========================= */
+io.on("connection", (socket: any) => {
+  console.log("🟢 Socket connected:", socket.id);
+  console.log("👤 User:", socket.userId);
 
-    const session = await CallSession.findOneAndUpdate(
-      { sessionId: data.sessionId },
-      {
-        endTime: new Date(),
-        durationSeconds: data.duration,
-      },
-      { new: true }
-    );
-
-    if (session) {
-      await processCallEarning(data.sessionId);
-    }
-
-    console.log("✅ Call session ended:", data.sessionId);
-  } catch (err: any) {
-    console.log("END ERROR:", err.message);
-  }
-});
+  // ✅ REGISTER CALL EVENTS
+  registerCallHandlers(socket);
 
   socket.on("disconnect", () => {
-    console.log("🔴 Socket disconnected:", socket.id);
+    console.log("🔴 User disconnected:", socket.userId);
   });
 });
+
 
 /* ───────────────────────── INITIALIZE SOCKETS ───────────────────────── */
 

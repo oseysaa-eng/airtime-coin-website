@@ -33,9 +33,9 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
     @ReactMethod public void addListener(String eventName) {}
     @ReactMethod public void removeListeners(Integer count) {}
 
-    /* =====================================================
+    /* ============================================
        START LISTENING
-    ===================================================== */
+    ============================================ */
 
     @ReactMethod
     public void start() {
@@ -46,7 +46,7 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
                 getReactApplicationContext().checkSelfPermission(
                         android.Manifest.permission.READ_PHONE_STATE
                 ) != PackageManager.PERMISSION_GRANTED) {
-            Log.d("CALL_DEBUG", "Permission READ_PHONE_STATE not granted");
+            Log.d("CALL_DEBUG", "❌ Permission READ_PHONE_STATE not granted");
             return;
         }
 
@@ -66,12 +66,7 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
 
                 switch (state) {
 
-                    case TelephonyManager.CALL_STATE_RINGING:
-                        // Incoming call ringing
-                        break;
-
                     case TelephonyManager.CALL_STATE_OFFHOOK:
-                        // Call started (incoming answered OR outgoing)
 
                         if (callStartTime == 0) {
 
@@ -89,7 +84,6 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
                         break;
 
                     case TelephonyManager.CALL_STATE_IDLE:
-                        // Call ended
 
                         if (callStartTime != 0) {
 
@@ -111,9 +105,9 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
         telephonyManager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE);
     }
 
-    /* =====================================================
+    /* ============================================
        STOP LISTENING
-    ===================================================== */
+    ============================================ */
 
     @ReactMethod
     public void stopListening() {
@@ -123,38 +117,39 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
         }
     }
 
-    /* =====================================================
+    /* ============================================
        START OVERLAY
-    ===================================================== */
-@ReactMethod
-public void startOverlay(String name, String number, String photo, String spamStatus) {
-    Log.d("OVERLAY_DEBUG", "🔥 OVERLAY TRIGGER CALLED");
+    ============================================ */
 
-    try {
-        Intent intent = new Intent(
-                getReactApplicationContext(),
-                OverlayService.class
-        );
+    @ReactMethod
+    public void startOverlay(String name, String number, String photo, String spamStatus) {
+        Log.d("OVERLAY_DEBUG", "🔥 START OVERLAY");
 
-        intent.putExtra("name", name);
-        intent.putExtra("number", number);
-        intent.putExtra("photo", photo);
-        intent.putExtra("spam", spamStatus);
+        try {
+            Intent intent = new Intent(
+                    getReactApplicationContext(),
+                    OverlayService.class
+            );
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            getReactApplicationContext().startForegroundService(intent); // ✅ CORRECT
-        } else {
-            getReactApplicationContext().startService(intent);
+            intent.putExtra("name", name);
+            intent.putExtra("number", number);
+            intent.putExtra("photo", photo);
+            intent.putExtra("spam", spamStatus);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getReactApplicationContext().startForegroundService(intent); // ✅ ONLY HERE
+            } else {
+                getReactApplicationContext().startService(intent);
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-    } catch (Exception e) {
-        e.printStackTrace();
     }
-}
 
-    /* =====================================================
+    /* ============================================
        UPDATE OVERLAY
-    ===================================================== */
+    ============================================ */
 
     @ReactMethod
     public void updateOverlay(String spamStatus) {
@@ -164,40 +159,39 @@ public void startOverlay(String name, String number, String photo, String spamSt
                     OverlayService.class
             );
 
-
-
             intent.putExtra("updateSpam", spamStatus);
 
-            getReactApplicationContext().startService(intent);
+            getReactApplicationContext().startService(intent); // ✅ NORMAL SERVICE
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    /* =====================================================
+    /* ============================================
        STOP OVERLAY
-    ===================================================== */
-@ReactMethod
-public void stopOverlay() {
-    try {
-        Intent intent = new Intent(
-                getReactApplicationContext(),
-                OverlayService.class
-        );
+    ============================================ */
 
-        intent.putExtra("stop", true);
+    @ReactMethod
+    public void stopOverlay() {
+        try {
+            Intent intent = new Intent(
+                    getReactApplicationContext(),
+                    OverlayService.class
+            );
 
-        getReactApplicationContext().startService(intent); // ✅ NOT foreground
+            intent.putExtra("stop", true);
 
-    } catch (Exception e) {
-        e.printStackTrace();
+            getReactApplicationContext().startService(intent); // ✅ NOT foreground
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
-}
 
-    /* =====================================================
-       CONTACT RESOLVER (SAFE)
-    ===================================================== */
+    /* ============================================
+       CONTACT RESOLVER
+    ============================================ */
 
     private WritableMap getContactDataSafe(String number) {
 
@@ -239,24 +233,14 @@ public void stopOverlay() {
 
                 if (cursor != null && cursor.moveToFirst()) {
 
-                    int nameIndex = cursor.getColumnIndex(
-                            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
-                    );
+                    map.putString("name",
+                            cursor.getString(cursor.getColumnIndex(
+                                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)));
 
-                    int photoIndex = cursor.getColumnIndex(
-                            ContactsContract.CommonDataKinds.Phone.PHOTO_URI
-                    );
+                    map.putString("photo",
+                            cursor.getString(cursor.getColumnIndex(
+                                    ContactsContract.CommonDataKinds.Phone.PHOTO_URI)));
 
-                    String name = (nameIndex >= 0)
-                            ? cursor.getString(nameIndex)
-                            : "Saved Contact";
-
-                    String photo = (photoIndex >= 0)
-                            ? cursor.getString(photoIndex)
-                            : null;
-
-                    map.putString("name", name);
-                    map.putString("photo", photo);
                     map.putBoolean("isSaved", true);
 
                 } else {
@@ -268,9 +252,6 @@ public void stopOverlay() {
 
         } catch (Exception e) {
             e.printStackTrace();
-            map.putString("name", "Unknown");
-            map.putBoolean("isSaved", false);
-            map.putString("photo", null);
         } finally {
             if (cursor != null) cursor.close();
         }
@@ -281,9 +262,9 @@ public void stopOverlay() {
         return map;
     }
 
-    /* =====================================================
+    /* ============================================
        EVENT EMITTER
-    ===================================================== */
+    ============================================ */
 
     private void sendEventSafe(String name, WritableMap data) {
         try {

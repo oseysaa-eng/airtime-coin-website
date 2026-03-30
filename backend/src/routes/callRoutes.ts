@@ -26,7 +26,7 @@ const normalizeNumber = (num: string) => {
 };
 
 /* ============================================
-   🚫 REPORT SPAM (PROTECTED + SAFE)
+   🚫 REPORT SPAM
 ============================================ */
 router.post("/report", auth, async (req: any, res) => {
   try {
@@ -42,7 +42,6 @@ router.post("/report", auth, async (req: any, res) => {
     let record = await SpamNumber.findOne({ number });
 
     if (record) {
-      // ❌ prevent duplicate reporting
       if (record.reportedBy?.includes(userId)) {
         return res.json({
           success: false,
@@ -56,7 +55,6 @@ router.post("/report", auth, async (req: any, res) => {
       record.lastReportedAt = new Date();
 
       await record.save();
-
     } else {
       record = await SpamNumber.create({
         number,
@@ -77,109 +75,64 @@ router.post("/report", auth, async (req: any, res) => {
 });
 
 /* ============================================
-   💰 AUTO CALL CREDIT (CORE ENGINE)
+   💰 AUTO CREDIT (NOW SAFE / NO DB WRITE)
 ============================================ */
 router.post("/auto-credit", auth, async (req: any, res) => {
   try {
     const userId = req.user.id;
-    let { seconds, phoneNumber } = req.body;
+    const { sessionId } = req.body;
 
-    phoneNumber = normalizeNumber(phoneNumber);
-
-    /* ---------------- GLOBAL PAUSE ---------------- */
-    const settings = await SystemSettings.findOne();
-    if (settings?.incidentMode?.active) {
-      return res.status(403).json({
-        message: "System temporarily unavailable",
-      });
+    if (!sessionId) {
+      return res.status(400).json({ message: "Session required" });
     }
 
+    const session = await CallSession.findOne({ sessionId });
+
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+
+    // 🚫 Prevent double credit
+    if (session.status !== "pending") {
+      return res.json({ credited: 0, message: "Already processed" });
+    }
+
+    const seconds = session.durationSeconds;
     const minutes = Math.floor(seconds / 60);
 
-    /* ---------------- MIN 5 MINUTES ---------------- */
+    /* -------- MIN 5 MIN -------- */
     if (minutes < 5) {
-      await CallSession.create({
-        userId,
-        durationSeconds: seconds,
-        creditedMinutes: 0,
-        status: "rejected",
-        reason: "Below 5 mins",
-        phoneNumber,
-      });
-
+      session.status = "rejected";
+      await session.save();
       return res.json({ credited: 0 });
     }
 
-    /* ---------------- DAILY LIMIT ---------------- */
-    const today = new Date().toISOString().slice(0, 10);
-
-    let daily = await DailyCall.findOne({ userId, date: today });
-
-    if (!daily) {
-      daily = await DailyCall.create({
-        userId,
-        date: today,
-        minutes: 0,
-      });
-    }
-
-    if (daily.minutes >= 100) {
-      return res.json({
-        credited: 0,
-        reason: "Daily limit reached",
-      });
-    }
-
-    /* ---------------- FRAUD CHECK ---------------- */
+    /* -------- FRAUD CHECK -------- */
     const fraud = await runCallFraudChecks({
       userId,
       duration: seconds,
-      phoneNumber,
+      phoneNumber: session.phoneNumber,
     });
 
     if (fraud.blocked) {
-      await CallSession.create({
-        userId,
-        durationSeconds: seconds,
-        creditedMinutes: 0,
-        status: "fraud",
-        reason: "Fraud detected",
-        phoneNumber,
-      });
-
+      session.status = "fraud";
+      await session.save();
       return res.json({ credited: 0 });
     }
 
-    /* ---------------- CREDIT ---------------- */
-    let credit = minutes;
+    /* -------- CREDIT -------- */
+    session.status = "valid";
+    session.creditedMinutes = minutes;
+    await session.save();
 
-    if (daily.minutes + credit > 100) {
-      credit = 100 - daily.minutes;
-    }
-
-    /* ---------------- SAVE SESSION ---------------- */
-    await CallSession.create({
-      userId,
-      durationSeconds: seconds,
-      creditedMinutes: credit,
-      status: "valid",
-      phoneNumber,
-    });
-
-    /* ---------------- UPDATE DAILY ---------------- */
-    daily.minutes += credit;
-    await daily.save();
-
-    /* ---------------- UPDATE WALLET ---------------- */
     await Wallet.findOneAndUpdate(
       { userId },
-      { $inc: { totalMinutes: credit } },
+      { $inc: { totalMinutes: minutes } },
       { upsert: true }
     );
 
     res.json({
-      credited: credit,
-      totalToday: daily.minutes,
+      credited: minutes,
       trustScore: fraud.trustScore,
     });
 
@@ -226,7 +179,7 @@ router.get("/weekly", auth, async (req: any, res) => {
 });
 
 /* ============================================
-   🔍 CHECK NUMBER (SMART RESPONSE)
+   🔍 CHECK NUMBER
 ============================================ */
 router.post("/check-number", async (req, res) => {
   try {
