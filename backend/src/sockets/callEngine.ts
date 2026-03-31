@@ -1,7 +1,10 @@
 // socket/callEngine.ts
-import CallSession from "../models/CallSession";
 
-export const registerCallHandlers = (io, socket) => {
+import CallSession from "../models/CallSession";
+import { processCallEarning } from "../services/callEarningService";
+
+export const registerCallHandlers = (socket: any) => {
+
   const userId = socket.userId;
 
   /* =========================
@@ -9,7 +12,7 @@ export const registerCallHandlers = (io, socket) => {
   ========================= */
   socket.on("call_start", async ({ sessionId, number }) => {
     try {
-      if (!sessionId) return;
+      if (!sessionId || !number) return;
 
       await CallSession.findOneAndUpdate(
         { sessionId },
@@ -19,7 +22,7 @@ export const registerCallHandlers = (io, socket) => {
           status: "pending",
           startedAt: new Date(),
         },
-        { upsert: true }
+        { upsert: true, new: true }
       );
 
       console.log("✅ CALL START SAVED", sessionId);
@@ -36,28 +39,44 @@ export const registerCallHandlers = (io, socket) => {
     try {
       if (!sessionId) return;
 
-      const session = await CallSession.findOne({ sessionId });
+      // ✅ sanitize duration
+      const safeDuration = Math.max(0, Math.min(duration || 0, 7200)); // max 2hrs
 
+      let session = await CallSession.findOne({ sessionId });
+
+      // 🔥 HANDLE EDGE CASE (end before start saved)
       if (!session) {
-        console.log("⚠️ Session not found");
-        return;
+        session = await CallSession.create({
+          sessionId,
+          userId,
+          status: "pending",
+          startedAt: new Date(Date.now() - safeDuration * 1000),
+        });
       }
 
-      // 🚫 Already processed
+      // 🚫 prevent duplicate processing
       if (session.status !== "pending") {
-        console.log("⚠️ Duplicate end ignored");
+        console.log("⚠️ Duplicate end ignored:", sessionId);
         return;
       }
 
-      session.durationSeconds = duration;
+      // ✅ update session
+      session.durationSeconds = safeDuration;
       session.endedAt = new Date();
+      session.status = "completed";
 
       await session.save();
 
       console.log("✅ CALL END UPDATED", sessionId);
 
+      /* =========================
+         💰 PROCESS EARNINGS
+      ========================= */
+      await processCallEarning(sessionId);
+
     } catch (e) {
       console.error("CALL END ERROR:", e);
     }
   });
+
 };

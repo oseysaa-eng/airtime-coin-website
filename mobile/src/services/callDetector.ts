@@ -11,7 +11,8 @@ const API_URL = "https://atc-backend-cn4f.onrender.com";
 
 let isOverlayRunning = false;
 let currentNumber = null;
-let activeSessionId = null; // ✅ GLOBAL SESSION TRACK
+let activeSessionId = null;
+let isInitialized = false;
 
 export const initCallMining = (onStart, onEnd) => {
 
@@ -19,6 +20,15 @@ export const initCallMining = (onStart, onEnd) => {
     console.warn("❌ CallDetector not found");
     return () => {};
   }
+
+  if (isInitialized) {
+    console.log("⚠️ CallMining already initialized");
+    return () => {};
+  }
+
+  isInitialized = true;
+
+  console.log("✅ CallMining initialized");
 
   /* ================================
      CLEAR OLD LISTENERS
@@ -31,114 +41,100 @@ export const initCallMining = (onStart, onEnd) => {
   /* ================================
      CALL STARTED
   ================================= */
+
   const startSub = emitter.addListener("CALL_STARTED", async (data = {}) => {
-    console.log("📞 CALL STARTED", data);
+  console.log("📞 CALL STARTED", data);
 
-    const name = data.name || "Unknown Caller";
-    const number = data.number || "Unknown";
-    const photo = data.photo || null;
+  const name = data.name || "Unknown Caller";
+  const number = data.number || "Unknown";
+  const photo = data.photo || null;
 
-    // 🚫 BLOCK DUPLICATES PROPERLY
-    if (currentNumber === number && activeSessionId) {
-      console.log("⚠️ Duplicate call ignored");
-      return;
-    }
+  // 🚫 BLOCK TRUE DUPLICATES ONLY
+  if (currentNumber === number && activeSessionId) {
+    console.log("⚠️ Duplicate ignored:", number);
+    return;
+  }
 
-    // ✅ CREATE SESSION ONLY ONCE
-    activeSessionId = uuidv4();
-    currentNumber = number;
+  // ✅ SET NUMBER FIRST (CRITICAL FIX)
+  currentNumber = number;
 
-    /* ---------- START OVERLAY ---------- */
-    if (!isOverlayRunning) {
-      try {
-        CallDetector.startOverlay(name, number, photo, "checking");
-        isOverlayRunning = true;
-      } catch (e) {
-        console.log("Overlay start error:", e);
-      }
-    }
+  // ✅ CREATE SESSION
+  activeSessionId = uuidv4();
+  console.log("🆔 SESSION CREATED:", activeSessionId);
 
-    /* ---------- SEND TO BACKEND ---------- */
+  /* ---------- START OVERLAY ---------- */
+  if (!isOverlayRunning) {
     try {
-      global.socket?.emit("call_start", {
+      CallDetector.startOverlay(name, number, photo, "checking");
+      isOverlayRunning = true;
+    } catch (e) {
+      console.log("Overlay start error:", e);
+    }
+  }
+
+  /* ---------- EMIT TO BACKEND ---------- */
+  try {
+    if (global.socket?.connected) {
+      console.log("🚀 EMIT CALL START");
+
+      global.socket.emit("call_start", {
         sessionId: activeSessionId,
         number,
       });
-    } catch (e) {
-      console.log("Socket start error:", e);
+
+    } else {
+      console.log("⚠️ Socket not connected (start)");
     }
+  } catch (e) {
+    console.log("Socket start error:", e);
+  }
 
-    /* ---------- SPAM CHECK ---------- */
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-
-      const res = await fetch(`${API_URL}/api/call/check-number`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ number }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      const result = await res.json();
-
-      if (currentNumber === number) {
-        CallDetector.updateOverlay(result.status);
-      }
-
-    } catch (e) {
-      console.log("⚠️ Spam check error:", e);
-
-      try {
-        CallDetector.updateOverlay("unknown");
-      } catch {}
-    }
-
-    onStart && onStart(data);
-  });
+  onStart && onStart(data);
+});
 
   /* ================================
      CALL ENDED
   ================================= */
-  const endSub = emitter.addListener("CALL_ENDED", (data = {}) => {
-    console.log("📞 CALL ENDED");
+const endSub = emitter.addListener("CALL_ENDED", (data = {}) => {
+  console.log("📞 CALL ENDED");
 
-    const duration = data?.duration || 0;
+  const duration = data?.duration || 0;
 
-    // ❌ NO SESSION → IGNORE (prevents backend crash)
-    if (!activeSessionId) {
-      console.log("⚠️ No active session, skipping");
-      return;
-    }
+  if (!activeSessionId) {
+    console.log("❌ No session, skipping");
+    return;
+  }
 
-    /* ---------- DELAY OVERLAY STOP ---------- */
-    setTimeout(() => {
-      try {
-        CallDetector.stopOverlay();
-      } catch (e) {
-        console.log("Overlay stop error:", e);
-      }
-    }, 2000);
+  console.log("🛑 Ending session:", activeSessionId);
 
-    /* ---------- SEND END EVENT ---------- */
-    try {
-      global.socket?.emit("call_end", {
+  try {
+    if (global.socket?.connected) {
+      console.log("🚀 EMIT CALL END");
+
+      global.socket.emit("call_end", {
         sessionId: activeSessionId,
         duration,
       });
-    } catch (e) {
-      console.log("Socket end error:", e);
+    } else {
+      console.log("⚠️ Socket not connected (end)");
     }
+  } catch (e) {
+    console.log("Socket end error:", e);
+  }
 
-    // ✅ RESET STATE SAFELY
-    activeSessionId = null;
-    isOverlayRunning = false;
-    currentNumber = null;
+  setTimeout(() => {
+    try {
+      CallDetector.stopOverlay();
+    } catch {}
+  }, 1500);
 
-    onEnd && onEnd(duration);
-  });
+  // ✅ RESET
+  activeSessionId = null;
+  currentNumber = null;
+  isOverlayRunning = false;
+
+  onEnd && onEnd(duration);
+});
 
   /* ================================
      START LISTENER
@@ -150,27 +146,9 @@ export const initCallMining = (onStart, onEnd) => {
   }
 
   /* ================================
-     CLEANUP
+     NO CLEANUP (PERSISTENT ENGINE)
   ================================= */
   return () => {
-    console.log("🧹 Cleaning CallDetector");
-
-    try {
-      startSub.remove();
-      endSub.remove();
-
-      emitter.removeAllListeners("CALL_STARTED");
-      emitter.removeAllListeners("CALL_ENDED");
-
-      CallDetector.stopListening?.();
-      CallDetector.stopOverlay();
-
-    } catch (e) {
-      console.log("Cleanup error:", e);
-    }
-
-    activeSessionId = null;
-    isOverlayRunning = false;
-    currentNumber = null;
+    console.log("⚠️ Cleanup skipped (persistent)");
   };
 };

@@ -19,7 +19,6 @@ import { registerCallHandlers } from "./src/sockets/callHandlers";
 
 
 
-
 /* ───────────────────────── LOAD ENV ───────────────────────── */
 
 dotenv.config();
@@ -205,42 +204,34 @@ const io = new IOServer(server, {
   },
 });
 
-app.set("io", io);
-
-/* =========================
-   AUTH MIDDLEWARE (MUST BE FIRST)
-========================= */
+/* ================= AUTH ================= */
 io.use((socket: any, next) => {
   try {
     const token = socket.handshake.auth?.token;
-
     if (!token) return next(new Error("No token"));
 
     const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
-
     socket.userId = decoded.id;
 
     next();
-
-  } catch (err) {
+  } catch {
     next(new Error("Unauthorized"));
   }
 });
 
-/* =========================
-   SINGLE CONNECTION HANDLER
-========================= */
+/* ================= CONNECTION ================= */
 io.on("connection", (socket: any) => {
   console.log("🟢 Socket connected:", socket.id);
   console.log("👤 User:", socket.userId);
 
-  // ✅ REGISTER CALL EVENTS
+  // ✅ REGISTER CALL ENGINE HERE
   registerCallHandlers(socket);
 
   socket.on("disconnect", () => {
     console.log("🔴 User disconnected:", socket.userId);
   });
 });
+
 
 
 /* ───────────────────────── INITIALIZE SOCKETS ───────────────────────── */

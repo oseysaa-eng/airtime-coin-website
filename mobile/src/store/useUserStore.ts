@@ -1,8 +1,8 @@
 import axios from "axios";
 import { create } from "zustand";
-import socket from "../services/socket";
+import {socket} from "../services/socket";
 
-const API = "http://192.168.1.217:5000/api";
+const API = "https://atc-backend-cn4f.onrender.com/api";
 
 type Store = {
   userId: string | null;

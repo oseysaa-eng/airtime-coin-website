@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { io, Socket } from "socket.io-client";
 
-const SOCKET_URL = "http://192.168.1.217:5000";
+const SOCKET_URL = "https://atc-backend-cn4f.onrender.com";
 
 let socket: Socket | null = null;
 

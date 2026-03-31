@@ -1,16 +1,14 @@
 import mongoose, { Document, Schema } from "mongoose";
 
 export interface IUser extends Document {
-  userId: string;
   email: string;
   password: string;
 
-  name?: string;
-  fullName?: string;
-  profileImage: String,
-  mediaTypes: String,
-  
-  referralCode: string;
+  name: string;
+  fullName: string;
+  profileImage?: string;
+
+  referralCode?: string;
   referredBy?: string | null;
 
   balance: number;
@@ -20,12 +18,15 @@ export interface IUser extends Document {
 
   totalEarnings: number;
   totalMinutes: number;
-  
+
+  // 🔥 NEW (CALL MINING)
+  totalCalls: number;
+  lastCallAt?: Date;
+  fraudScore: number;
 
   pushTokens: string[];
 
   earlyAdopter: boolean;
-
   pausedUntil?: Date;
 
   role: "user" | "admin";
@@ -36,12 +37,7 @@ export interface IUser extends Document {
 
 const UserSchema = new Schema<IUser>(
   {
-    userId: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-    },
+    /* ================= BASIC ================= */
 
     email: {
       type: String,
@@ -58,19 +54,21 @@ const UserSchema = new Schema<IUser>(
     },
 
     name: {
-  type: String,
-  required: true
-},
-  
-    fullName: {
-  type: String,
-  required: true
-},
+      type: String,
+      required: true,
+    },
 
-profileImage: {
-  type: String,
-  default: null
-},
+    fullName: {
+      type: String,
+      required: true,
+    },
+
+    profileImage: {
+      type: String,
+      default: null,
+    },
+
+    /* ================= REFERRAL ================= */
 
     referralCode: {
       type: String,
@@ -83,6 +81,8 @@ profileImage: {
       type: String,
       default: null,
     },
+
+    /* ================= WALLET ================= */
 
     balance: {
       type: Number,
@@ -114,6 +114,25 @@ profileImage: {
       default: 0,
     },
 
+    /* ================= CALL MINING (🔥 NEW) ================= */
+
+    totalCalls: {
+      type: Number,
+      default: 0,
+    },
+
+    lastCallAt: {
+      type: Date,
+      default: null,
+    },
+
+    fraudScore: {
+      type: Number,
+      default: 0,
+    },
+
+    /* ================= SYSTEM ================= */
+
     pushTokens: {
       type: [String],
       default: [],
@@ -141,5 +160,4 @@ profileImage: {
 );
 
 export default mongoose.models.User ||
-mongoose.model<IUser>("User", UserSchema);
-
+  mongoose.model<IUser>("User", UserSchema);
