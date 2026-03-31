@@ -3,7 +3,7 @@ export function convertMinutesToATC(
   todayMinutes: number,
   trustScore: number
 ) {
-  const BASE_RATE = 0.001;
+  const BASE_RATE = 0.0025;
 
   const tier = dailyTierMultiplier(todayMinutes);
   const trust = trustMultiplier(trustScore);

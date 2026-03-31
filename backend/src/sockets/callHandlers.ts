@@ -3,55 +3,53 @@ import { processCallEarning } from "../services/callEarningService";
 
 export const registerCallHandlers = (socket: any) => {
 
-  /* ================================
-     CALL START
-  ================================= */
-  socket.on("call_start", async (data: any) => {
+  const userId = socket.userId;
+
+  /* ================= CALL START ================= */
+  socket.on("call_start", async ({ sessionId, number }) => {
     try {
-      if (!data?.sessionId || !data?.number) {
-        console.log("❌ Invalid call_start payload");
-        return;
-      }
+      if (!sessionId) return;
 
-      await CallSession.create({
-        sessionId: data.sessionId,
-        userId: socket.userId,
-        phoneNumber: data.number,
-        startTime: new Date(),
-      });
-
-      console.log("✅ Call session started:", data.sessionId);
-
-    } catch (err: any) {
-      console.log("START ERROR:", err.message);
-    }
-  });
-
-  /* ================================
-     CALL END
-  ================================= */
-  socket.on("call_end", async (data: any) => {
-    try {
-      if (!data?.sessionId) return;
-
-      const session = await CallSession.findOneAndUpdate(
-        { sessionId: data.sessionId },
+      await CallSession.findOneAndUpdate(
+        { sessionId },
         {
-          endTime: new Date(),
-          durationSeconds: data.duration || 0,
+          userId,
+          phoneNumber: number,
+          status: "pending",
+          startedAt: new Date(),
         },
-        { new: true }
+        { upsert: true }
       );
 
-      if (session) {
-        await processCallEarning(data.sessionId);
-      }
+      console.log("✅ CALL START SAVED", sessionId);
 
-      console.log("✅ Call session ended:", data.sessionId);
-
-    } catch (err: any) {
-      console.log("END ERROR:", err.message);
+    } catch (e) {
+      console.error("CALL START ERROR:", e);
     }
   });
 
+  /* ================= CALL END ================= */
+  socket.on("call_end", async ({ sessionId, duration }) => {
+    try {
+      if (!sessionId) return;
+
+      const session = await CallSession.findOne({ sessionId });
+
+      if (!session) return;
+
+      if (session.status !== "pending") return;
+
+      session.durationSeconds = duration;
+      session.endedAt = new Date();
+      await session.save();
+
+      console.log("✅ CALL END UPDATED", sessionId);
+
+      // 💰 TRIGGER EARNING ENGINE
+      await processCallEarning(sessionId);
+
+    } catch (e) {
+      console.error("CALL END ERROR:", e);
+    }
+  });
 };

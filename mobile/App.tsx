@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as ExpoSplash from "expo-splash-screen";
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Provider as PaperProvider } from 'react-native-paper';
@@ -16,6 +16,8 @@ import { registerForPushNotificationsAsync } from "./src/services/pushClient";
 import { connectSocket, joinUserRoom, onMinutesCredit } from "./src/services/realtime";
 import { useUserStore } from "./src/store/useUserStore";
 import { checkEmulator } from "./src/utils/securityCheck";
+import { initCallMining } from "./src/services/callDetector";
+
 
 
 ExpoSplash.preventAutoHideAsync(); // ONCE, at top level
@@ -91,6 +93,7 @@ function RootNavigator() {
   const [hasOnboarded, setHasOnboarded] = useState(false);
   const [isLanguageSelected, setIsLanguageSelected] = useState(false);
   const [showAppSplash, setShowAppSplash] = useState(true);
+
 
 useEffect(() => {
   const init = async () => {
@@ -279,6 +282,35 @@ function AppBootstrap() {
     if(uid) joinUserRoom(uid);
     onMinutesCredit(p => console.log("Realtime credit", p));
   })();
+}, []);
+
+const miningStarted = useRef(false)
+
+useEffect(() => {
+  const start = async () => {
+    if (miningStarted.current) return;
+
+    const uid = await AsyncStorage.getItem("userId");
+
+    // 🔥 WAIT FOR SOCKET
+    connectSocket("https://atc-backend-cn4f.onrender.com");
+
+    setTimeout(() => {
+      if (miningStarted.current) return;
+
+      miningStarted.current = true;
+
+      console.log("🚀 Starting Call Mining AFTER socket ready");
+
+      initCallMining(
+        () => console.log("CALL START UI"),
+        () => console.log("CALL END UI")
+      );
+
+    }, 1500); // give socket time to connect
+  };
+
+  start();
 }, []);
 
   return null; // No UI needed

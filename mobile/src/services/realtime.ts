@@ -2,7 +2,7 @@ import { io, Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
 
-export function connectSocket(serverUrl = "http://192.168.1.217:5000") {
+export function connectSocket(serverUrl = "https://atc-backend-cn4f.onrender.com") {
   if (socket) return socket;
   socket = io(serverUrl, { transports: ["websocket"] });
   return socket;

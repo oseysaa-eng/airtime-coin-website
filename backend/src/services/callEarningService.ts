@@ -1,49 +1,48 @@
-import Wallet from "../models/Wallet";
 import CallSession from "../models/CallSession";
+import User from "../models/User";
+import { pushWalletUpdate } from "../sockets/socket";
 
-const RATE_PER_SECOND = 0.001;
-const MIN_CALL_SECONDS = 10; // anti-fraud
+const MIN_DURATION = 10;
+const RATE_PER_SECOND = 0.0025;
 
 export const processCallEarning = async (sessionId: string) => {
   try {
     const session = await CallSession.findOne({ sessionId });
-
     if (!session) return;
 
-    /* ❌ FRAUD FILTER */
-    if (!session.durationSeconds || session.durationSeconds < MIN_CALL_SECONDS) {
+    if (session.status === "completed") return;
+
+    const duration = session.durationSeconds || 0;
+
+    // 🚫 Reject short calls
+    if (duration < MIN_DURATION) {
       session.status = "rejected";
-      session.reason = "Too short";
       await session.save();
       return;
     }
 
-    /* 💰 CALCULATE */
-    const earnings = session.durationSeconds * RATE_PER_SECOND;
+    // 💰 Calculate earnings
+    const earnings = duration * RATE_PER_SECOND;
 
-    session.creditedATC = earnings;
+    const user = await User.findById(session.userId);
+    if (!user) return;
+
+    user.balance += earnings;
+    await user.save();
+
+    session.earnings = earnings;
+    session.status = "completed";
     await session.save();
 
-    /* 💰 UPDATE WALLET */
-    await Wallet.findOneAndUpdate(
-      { userId: session.userId },
-      {
-        $inc: {
-          balanceATC: earnings,
-          totalEarnedATC: earnings,
-          totalMinutes: session.durationSeconds / 60,
-          todayMinutes: session.durationSeconds / 60,
-          "dailyEarned.calls": earnings,
-        },
-      },
-      { upsert: true }
-    );
+    console.log("💰 Earnings added:", earnings);
 
-    console.log(
-      `💰 ${earnings.toFixed(3)} ATC credited for ${session.durationSeconds}s`
-    );
+    // 🔥 SEND TO APP
+    pushWalletUpdate(session.userId, {
+      balance: user.balance,
+      earnings,
+    });
 
-  } catch (err: any) {
-    console.log("AUTO CREDIT ERROR:", err.message);
+  } catch (err) {
+    console.error("EARNING ERROR:", err);
   }
 };
