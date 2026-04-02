@@ -4,23 +4,30 @@ import User from "../models/User";
 
 const router = express.Router();
 
-// Save a push token for the current user
 router.post("/register", authMiddleware, async (req: any, res) => {
   try {
     const { token } = req.body;
-    if (!token) return res.status(400).json({ message: "Token required" });
 
-    const u = await User.findById(req.user.id);
-    if (!u) return res.status(404).json({ message: "User not found" });
+    if (!token) {
+      return res.status(400).json({ message: "Token required" });
+    }
 
-    u.pushTokens = u.pushTokens || [];
-    if (!u.pushTokens.includes(token)) u.pushTokens.push(token);
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    await u.save();
-    return res.json({ success: true });
+    if (!user.pushTokens.includes(token)) {
+      user.pushTokens.push(token);
+    }
+
+    await user.save();
+
+    console.log("📲 Token saved:", token);
+
+    res.json({ success: true });
+
   } catch (err) {
     console.error("push register error", err);
-    return res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
