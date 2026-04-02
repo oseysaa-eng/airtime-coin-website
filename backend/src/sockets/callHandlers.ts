@@ -46,7 +46,7 @@ export const registerCallHandlers = (socket: any) => {
       console.log("✅ CALL END UPDATED", sessionId);
 
       // 💰 TRIGGER EARNING ENGINE
-      await processCallEarning(sessionId);
+      await processCallEarning(sessionId.app);
 
     } catch (e) {
       console.error("CALL END ERROR:", e);

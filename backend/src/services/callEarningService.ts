@@ -1,48 +1,122 @@
 import CallSession from "../models/CallSession";
-import User from "../models/User";
-import { pushWalletUpdate } from "../sockets/socket";
+import { runCallFraudChecks } from "./callFraudEngine";
+import { calculateCallReward } from "./callRewardService";
+import { creditUser } from "./creditService";
+import { notifyUser } from "./notifyUser";
+import { emitAdminEvent, pushMinutes } from "../sockets/socket";
 
-const MIN_DURATION = 10;
-const RATE_PER_SECOND = 0.0025;
+const MIN_DURATION = 30; // seconds
 
-export const processCallEarning = async (sessionId: string) => {
+export const processCallEarning = async (sessionId: string, app?: any) => {
   try {
     const session = await CallSession.findOne({ sessionId });
-    if (!session) return;
 
-    if (session.status === "completed") return;
+    // ✅ SAFETY: avoid duplicates
+    if (!session || session.status === "completed") return;
 
     const duration = session.durationSeconds || 0;
 
-    // 🚫 Reject short calls
+    /* ================= REJECT SHORT ================= */
     if (duration < MIN_DURATION) {
       session.status = "rejected";
       await session.save();
+
+      emitAdminEvent("CALL_REJECTED", {
+        sessionId,
+        reason: "SHORT_CALL",
+        duration,
+      });
+
       return;
     }
 
-    // 💰 Calculate earnings
-    const earnings = duration * RATE_PER_SECOND;
+    /* ================= FRAUD CHECK ================= */
+    const fraud = await runCallFraudChecks({
+      userId: session.userId,
+      duration,
+      phoneNumber: session.phoneNumber,
+    });
 
-    const user = await User.findById(session.userId);
-    if (!user) return;
+    if (fraud.blocked) {
+      session.status = "blocked";
+      session.flagged = true;
+      session.riskScore = fraud.risk || 0;
+      await session.save();
 
-    user.balance += earnings;
-    await user.save();
+      console.log("🚫 Fraud blocked:", fraud.reason);
 
-    session.earnings = earnings;
+      // 🔥 ADMIN ALERT
+      emitAdminEvent("FRAUD_ALERT", {
+        userId: session.userId,
+        type: fraud.reason || "FRAUD_DETECTED",
+        risk: fraud.risk,
+        sessionId,
+      });
+
+      return;
+    }
+
+    /* ================= REWARD ================= */
+    const minutes = calculateCallReward(duration);
+
+    if (minutes <= 0) {
+      session.status = "rejected";
+      await session.save();
+
+      emitAdminEvent("CALL_REJECTED", {
+        sessionId,
+        reason: "NO_REWARD",
+      });
+
+      return;
+    }
+
+    /* ================= CREDIT ================= */
+    const credit = await creditUser(session.userId, minutes, "CALL");
+
+    /* ================= UPDATE SESSION ================= */
     session.status = "completed";
+    session.minutes = minutes;
+    session.riskScore = fraud.risk || 0;
+    session.endedAt = new Date();
     await session.save();
 
-    console.log("💰 Earnings added:", earnings);
+    console.log("💰 Minutes credited:", minutes);
 
-    // 🔥 SEND TO APP
-    pushWalletUpdate(session.userId, {
-      balance: user.balance,
-      earnings,
+    /* ================= REALTIME PUSH (USER APP) ================= */
+    pushMinutes(session.userId.toString(), minutes, {
+      type: "CALL",
+      sessionId,
     });
+
+    /* ================= ADMIN LIVE UPDATE ================= */
+    emitAdminEvent("ADMIN_ANALYTICS_UPDATE", {
+      type: "CALL_EARNING",
+      userId: session.userId,
+      minutes,
+      sessionId,
+      risk: fraud.risk || 0,
+    });
+
+    /* ================= NOTIFY USER ================= */
+    if (app) {
+      await notifyUser(
+        app,
+        session.userId,
+        "Call Reward",
+        `You earned ${minutes} minutes 🎉`,
+        { minutes }
+      );
+    }
 
   } catch (err) {
     console.error("EARNING ERROR:", err);
+
+    // 🔥 ADMIN ERROR VISIBILITY
+    emitAdminEvent("SYSTEM_ERROR", {
+      type: "CALL_EARNING_FAILED",
+      sessionId,
+      error: err.message,
+    });
   }
 };
