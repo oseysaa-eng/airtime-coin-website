@@ -2,6 +2,7 @@ import CallSession from "../models/CallSession";
 import FraudEvent from "../models/FraudEvent";
 
 export const detectCallFarming = async (userId:any) => {
+  
 
   const calls = await CallSession.find({
     userId,
@@ -21,6 +22,5 @@ export const detectCallFarming = async (userId:any) => {
 
   }
 
-  
-
 };
+

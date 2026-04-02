@@ -12,7 +12,6 @@ import {
 import { LineChart } from "react-native-chart-kit";
 
 import API from "../api/api";
-import { initCallMining } from "../services/callDetector";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 /* ---------------- PERMISSIONS ---------------- */
@@ -33,7 +32,10 @@ const requestCallPermissions = async () => {
   }
 };
 
+/* ---------------- CONSTANTS ---------------- */
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/* ========================================================= */
 
 export default function CallMiningScreen() {
   const [seconds, setSeconds] = useState(0);
@@ -59,18 +61,8 @@ export default function CallMiningScreen() {
       });
 
       setWeeklyCalls(mapped);
-    } catch (e) {
-      console.log("Weekly load error");
-    }
-  };
-
-  /* ---------------- SPAM CHECK ---------------- */
-  const checkSpam = async (number: string) => {
-    try {
-      const res = await API.post("/api/call/check-number", { number });
-      return res.data;
     } catch {
-      return { status: "unknown", label: "Unknown" };
+      console.log("Weekly load error");
     }
   };
 
@@ -83,19 +75,72 @@ export default function CallMiningScreen() {
         number: caller.number,
       });
 
-      Alert.alert(
-        "Reported",
-        `Reported ${res.data.reports} times`
-      );
+      Alert.alert("Reported", `Reported ${res.data.reports} times`);
     } catch {
       Alert.alert("Error", "Failed to report");
     }
   };
 
-  /* ---------------- MAIN EFFECT ---------------- */
+  /* ---------------- SOCKET LISTENERS ---------------- */
   useEffect(() => {
-    let cleanupMining: any;
+    const socket = global.socket;
+    if (!socket) return;
 
+    /* -------- CALL START -------- */
+    const onCallStart = (data: any) => {
+      console.log("📞 UI CALL START", data);
+
+      setCaller({
+        ...data,
+        spamStatus: data.spam || "unknown",
+        spamLabel: data.spam || "Unknown",
+      });
+
+      setActive(true);
+      setSeconds(0);
+
+      if (intervalRef.current) clearInterval(intervalRef.current);
+
+      intervalRef.current = setInterval(() => {
+        setSeconds((prev) => prev + 1);
+      }, 1000);
+    };
+
+    /* -------- CALL END -------- */
+    const onCallEnd = () => {
+      console.log("📞 UI CALL END");
+
+      if (intervalRef.current) clearInterval(intervalRef.current);
+
+      setActive(false);
+      setCaller(null);
+
+      loadWeeklyCalls();
+    };
+
+    /* -------- WALLET UPDATE -------- */
+    const onWalletUpdate = (data: any) => {
+      console.log("💰 Wallet Updated:", data);
+
+      Alert.alert(
+        "Earnings Received 💰",
+        `+${data.earnings.toFixed(3)} ATC`
+      );
+    };
+
+    socket.on("CALL_STARTED", onCallStart);
+    socket.on("CALL_ENDED", onCallEnd);
+    socket.on("WALLET_UPDATE", onWalletUpdate);
+
+    return () => {
+      socket.off("CALL_STARTED", onCallStart);
+      socket.off("CALL_ENDED", onCallEnd);
+      socket.off("WALLET_UPDATE", onWalletUpdate);
+    };
+  }, []);
+
+  /* ---------------- PERMISSION SETUP ---------------- */
+  useEffect(() => {
     const setup = async () => {
       const hasPermission = await requestCallPermissions();
 
@@ -104,28 +149,24 @@ export default function CallMiningScreen() {
         return;
       }
 
-      /* -------- Overlay Permission -------- */
+      /* -------- Overlay -------- */
       const overlayAsked = await AsyncStorage.getItem("overlay_asked");
 
       if (!overlayAsked) {
         Alert.alert(
           "Enable Overlay",
-          "Allow 'Appear on top' for call mining",
+          "Allow 'Appear on top'",
           [{ text: "Open Settings", onPress: () => Linking.openSettings() }]
         );
         await AsyncStorage.setItem("overlay_asked", "true");
       }
 
-          Alert.alert(
-      "Disable Battery Optimization",
-      "Allow app to run in background for call mining",
-      [
-        {
-          text: "Open Settings",
-          onPress: () => Linking.openSettings(),
-        },
-      ]
-    );
+      /* -------- Battery -------- */
+      Alert.alert(
+        "Disable Battery Optimization",
+        "Allow background activity",
+        [{ text: "Open Settings", onPress: () => Linking.openSettings() }]
+      );
 
       /* -------- Accessibility -------- */
       const accessAsked = await AsyncStorage.getItem("accessibility_asked");
@@ -139,46 +180,13 @@ export default function CallMiningScreen() {
         await AsyncStorage.setItem("accessibility_asked", "true");
       }
 
-      /* -------- START ENGINE -------- */
-      cleanupMining = initCallMining(
-        async (data) => {
-          const spamInfo = await checkSpam(data.number);
-
-          const enrichedCaller = {
-            ...data,
-            spamStatus: spamInfo.status,
-            spamLabel: spamInfo.label,
-          };
-
-          setCaller(enrichedCaller);
-          setActive(true);
-          setSeconds(0);
-
-          if (intervalRef.current) clearInterval(intervalRef.current);
-
-          intervalRef.current = setInterval(() => {
-            setSeconds((s) => s + 1);
-          }, 1000);
-        },
-
-        async () => {
-          // ❌ REMOVED auto-credit call
-          if (intervalRef.current) clearInterval(intervalRef.current);
-
-          setActive(false);
-          setCaller(null);
-
-          // ✅ Just refresh stats
-          loadWeeklyCalls();
-        }
-      );
+      loadWeeklyCalls();
     };
 
     setup();
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      if (cleanupMining) cleanupMining();
     };
   }, []);
 
@@ -188,10 +196,10 @@ export default function CallMiningScreen() {
       <Text style={styles.title}>Call Mining</Text>
 
       <Text style={styles.disclaimer}>
-        Calls above 5 minutes earn rewards automatically
+        Calls longer than 10 seconds earn rewards automatically
       </Text>
 
-      {/* -------- CALLER INFO -------- */}
+      {/* -------- CALLER -------- */}
       {caller && (
         <View style={{ marginVertical: 10 }}>
           <Text style={styles.name}>{caller.name}</Text>
@@ -214,14 +222,14 @@ export default function CallMiningScreen() {
         </View>
       )}
 
-      {/* 🚫 REPORT BUTTON */}
+      {/* REPORT */}
       {caller && !caller.isSaved && (
         <Text onPress={reportSpam} style={styles.report}>
           🚫 Report as Spam
         </Text>
       )}
 
-      {/* ⏱ TIMER */}
+      {/* TIMER */}
       {active && (
         <Text style={styles.timer}>
           📞 {Math.floor(seconds / 60)}:
@@ -229,7 +237,7 @@ export default function CallMiningScreen() {
         </Text>
       )}
 
-      {/* 📊 CHART */}
+      {/* CHART */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Weekly Call Minutes</Text>
         <Text style={styles.small}>Today: {todayCallMinutes} mins</Text>

@@ -107,13 +107,12 @@ export const runCallFraudChecks = async ({
   -------------------------------- */
 
   if (trust.score < 40) {
-
-    return {
-      blocked: true,
-      reason: "TRUST_LOW"
-    };
-
-  }
+  return {
+    blocked: true,
+    reason: "LOW_TRUST",
+    risk,
+  };
+}
 
   return {
     blocked: false,
