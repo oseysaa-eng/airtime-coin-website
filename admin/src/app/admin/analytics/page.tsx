@@ -10,6 +10,9 @@ import BurnRateTable from "./components/BurnRateTable";
 import DateRangeFilter from "./components/DateRangeFilter";
 import CallTrendChart from "./components/CallTrendChart";
 import FraudHeatmap from "./components/FraudHeatmap";
+import FraudAlert from "./components/FraudAlert";
+
+import { connectAdminSocket } from "@/lib/adminSocket";
 
 export default function AnalyticsPage() {
   const [overview, setOverview] = useState<any>(null);
@@ -23,18 +26,18 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [alert, setAlert] = useState<any>(null);
+
   /* ================================
-     LOAD DATA (CLEAN + SAFE)
+     LOAD INITIAL DATA (ONCE)
   ================================= */
-  const load = useCallback(async (f?: string, t?: string) => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
       const [overviewRes, burnRes, trendRes, fraudRes] = await Promise.all([
-        adminApi.get("/analytics", {
-          params: { from: f ?? from, to: t ?? to },
-        }),
+        adminApi.get("/analytics"),
         adminApi.get("/analytics/burn"),
         adminApi.get("/analytics/call-trend"),
         adminApi.get("/analytics/fraud-heatmap"),
@@ -51,45 +54,80 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, []);
 
-  /* ================================
-     INITIAL LOAD
-  ================================= */
   useEffect(() => {
     load();
   }, []);
 
   /* ================================
-     AUTO REFRESH (EVERY 30s)
+     SOCKET LIVE UPDATES
   ================================= */
   useEffect(() => {
-    const interval = setInterval(() => {
-      load();
-    }, 30000);
+    const socket = connectAdminSocket();
+    if (!socket) return;
 
-    return () => clearInterval(interval);
-  }, [load]);
+    /* LIVE ANALYTICS */
+    socket.on("ADMIN_ANALYTICS_UPDATE", (data: any) => {
+      console.log("📡 Live update:", data);
+
+      setOverview((prev: any) => ({
+        ...prev,
+        calls: (prev?.calls || 0) + 1,
+        minutes: (prev?.minutes || 0) + (data.minutes || 0),
+      }));
+
+      setTrend((prev: any[]) => [
+        ...prev.slice(-15),
+        {
+          date: new Date().toLocaleTimeString(),
+          calls: 1,
+        },
+      ]);
+    });
+
+    /* FRAUD ALERT */
+    socket.on("FRAUD_ALERT", (data: any) => {
+      console.log("🚨 Fraud alert:", data);
+
+      setAlert(data);
+
+      setTimeout(() => {
+        setAlert(null);
+      }, 5000);
+    });
+
+    return () => {
+      socket.off("ADMIN_ANALYTICS_UPDATE");
+      socket.off("FRAUD_ALERT");
+    };
+  }, []);
 
   /* ================================
-     HANDLE FILTER CHANGE
+     FILTER HANDLER
   ================================= */
-  const handleFilterChange = (f: string, t: string) => {
+  const handleFilterChange = async (f: string, t: string) => {
     setFrom(f);
     setTo(t);
-    load(f, t);
+
+    try {
+      const res = await adminApi.get("/analytics", {
+        params: { from: f, to: t },
+      });
+
+      setOverview(res.data);
+    } catch (err) {
+      console.log("Filter error");
+    }
   };
 
   /* ================================
-     LOADING UI
+     UI STATES
   ================================= */
   if (loading && !overview) {
     return <p className="p-6">Loading analytics...</p>;
   }
 
-  /* ================================
-     ERROR UI
-  ================================= */
   if (error) {
     return <div className="p-6 text-red-500">{error}</div>;
   }
@@ -111,10 +149,8 @@ export default function AnalyticsPage() {
         />
       </div>
 
-      {/* 🔄 Refresh Indicator */}
-      {loading && (
-        <p className="text-sm text-gray-500">Updating...</p>
-      )}
+      {/* FRAUD ALERT */}
+      <FraudAlert alert={alert} />
 
       {/* KPI */}
       <OverviewCards data={overview} />
