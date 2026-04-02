@@ -30,13 +30,12 @@
     "multer": "^2.0.2",
     "multer-s3": "^3.0.1",
     "node-cron": "^4.2.1",
+    "node-fetch": "^2.7.0",
     "sharp": "^0.34.5",
     "socket.io": "^4.8.1",
     "tesseract.js": "^6.0.1",
-    "uuid": "^13.0.0",
-
-   
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -6,7 +6,7 @@ export const notifyUser = async (
   userId: string,
   title: string,
   body: string,
-  data?: any,
+  data: any = {},
   category: "earnings" | "fraud" | "promo" = "earnings"
 ) => {
   try {
@@ -15,13 +15,13 @@ export const notifyUser = async (
     const user = await User.findById(userId);
     if (!user) return;
 
-    // 🚫 CATEGORY FILTER
+    /* ================= CATEGORY FILTER ================= */
     if (!user.notifications?.[category]) {
-      console.log(`🔕 ${category} notifications disabled`);
+      console.log(`🔕 ${category} disabled for user`);
       return;
     }
 
-    // 🔌 SOCKET
+    /* ================= SOCKET ================= */
     io?.to(`user:${userId}`).emit("notification", {
       title,
       body,
@@ -29,9 +29,12 @@ export const notifyUser = async (
       data,
     });
 
-    // 📲 PUSH
-    const tokens = (user.pushTokens || []).slice(0, 100);
-    if (!tokens.length) return;
+    /* ================= PUSH ================= */
+    const tokens = user.pushTokens || [];
+    if (!tokens.length) {
+      console.log("⚠️ No push tokens for user");
+      return;
+    }
 
     await sendPushToTokens(tokens, {
       notification: { title, body },
@@ -39,6 +42,6 @@ export const notifyUser = async (
     });
 
   } catch (err) {
-    console.error("notifyUser error", err);
+    console.error("❌ notifyUser error:", err);
   }
 };

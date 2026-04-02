@@ -119,6 +119,7 @@ import stakingRoutes from "./src/routes/stakingRoutes";
 import emissionRoutes from "./src/routes/emissionRoutes";
 import postbackRoutes from "./src/routes/postbackRoutes";
 import profileRoutes from "./src/routes/profileRoutes";
+import pushRoutes from "./src/routes/pushRoutes";
 
 /* ───────────────────────── HEALTH CHECK ───────────────────────── */
 
@@ -171,6 +172,7 @@ app.use("/api/stake", stakeRoutes);
 app.use("/api/staking", stakingRoutes);
 app.use("/api/emission", emissionRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/push", pushRoutes);
 
 app.use("/postback", postbackRoutes);
 
