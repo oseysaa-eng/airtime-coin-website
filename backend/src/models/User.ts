@@ -25,6 +25,11 @@ export interface IUser extends Document {
   fraudScore: number;
 
   pushTokens: string[];
+  notifications: {
+  earnings: boolean;
+  fraud: boolean;
+  promo: boolean;
+};
 
   earlyAdopter: boolean;
   pausedUntil?: Date;
@@ -133,6 +138,11 @@ const UserSchema = new Schema<IUser>(
 
     /* ================= SYSTEM ================= */
 
+notifications: {
+  earnings: { type: Boolean, default: true },
+  fraud: { type: Boolean, default: true },
+  promo: { type: Boolean, default: true },
+},
     pushTokens: {
       type: [String],
       default: [],
@@ -147,12 +157,14 @@ const UserSchema = new Schema<IUser>(
       type: Date,
       default: null,
     },
+    
 
     role: {
       type: String,
       enum: ["user", "admin"],
       default: "user",
     },
+    
   },
   {
     timestamps: true,

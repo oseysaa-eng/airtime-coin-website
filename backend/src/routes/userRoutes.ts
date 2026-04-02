@@ -37,4 +37,23 @@ router.put("/update-profile", auth, async (req:any,res)=>{
 
 });
 
+router.post("/notifications/settings", auth, async (req: any, res) => {
+  try {
+    const { earnings, fraud, promo } = req.body;
+
+    const update: any = {};
+
+    if (earnings !== undefined) update["notifications.earnings"] = earnings;
+    if (fraud !== undefined) update["notifications.fraud"] = fraud;
+    if (promo !== undefined) update["notifications.promo"] = promo;
+
+    await User.findByIdAndUpdate(req.user.id, update);
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update" });
+  }
+});
 export default router;
