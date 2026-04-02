@@ -13,7 +13,7 @@ export default function OverviewCards({ data }: Props) {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-      {stats.map(s => (
+      {stats.map((s) => (
         <StatCard
           key={s.label}
           title={s.label}
@@ -32,10 +32,11 @@ function StatCard({
   value: number;
 }) {
   return (
-    <div className="card">
+    <div className="card transition-all duration-300 hover:scale-[1.02] hover:shadow-lg">
       <p className="text-xs uppercase tracking-wide text-gray-500">
         {title}
       </p>
+
       <p className="text-2xl font-bold mt-1">
         {value ?? 0}
       </p>
