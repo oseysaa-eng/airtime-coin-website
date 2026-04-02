@@ -177,4 +177,46 @@ router.get("/top-callers", adminAuth, async (_req, res) => {
   res.json(top);
 });
 
+// call trend
+router.get("/call-trend", async (req, res) => {
+  const data = await CallSession.aggregate([
+    {
+      $group: {
+        _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+        calls: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  res.json(data.map(d => ({
+    date: d._id,
+    calls: d.calls,
+  })));
+});
+
+// fraud heatmap
+router.get("/fraud-heatmap", async (req, res) => {
+  const data = await CallSession.aggregate([
+    { $match: { flagged: true } },
+    {
+      $project: {
+        hour: { $hour: "$createdAt" },
+      },
+    },
+    {
+      $group: {
+        _id: "$hour",
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  res.json(data.map(d => ({
+    hour: d._id,
+    count: d.count,
+  })));
+});
+
 export default router;
