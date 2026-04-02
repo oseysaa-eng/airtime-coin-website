@@ -1,44 +1,44 @@
-type Props = {
-  trust: any[];
-};
+"use client";
 
-export default function TrustChart({ trust }: Props) {
-  if (!trust || trust.length === 0) {
-    return (
-      <div className="card">
-        <h2 className="font-semibold mb-2">
-          Trust Distribution
-        </h2>
-        <p className="text-sm text-gray-500">
-          No trust data available
-        </p>
-      </div>
-    );
-  }
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+
+const COLORS = ["#ef4444", "#f59e0b", "#3b82f6", "#10b981"];
+
+export default function TrustChart({ trust }: any) {
+  const data = trust.map((t: any, index: number) => ({
+    name:
+      index === 0 ? "Low (0-40)" :
+      index === 1 ? "Medium (40-60)" :
+      index === 2 ? "Good (60-80)" :
+      "High (80-100)",
+    value: t.count,
+  }));
 
   return (
-    <div className="card">
-      <h2 className="font-semibold mb-3">
-        Trust Distribution
-      </h2>
+    <div className="card h-[300px]">
+      <h2 className="text-lg font-bold mb-2">Trust Distribution</h2>
 
-      <div className="space-y-2">
-        {trust.map(t => (
-          <div
-            key={t._id}
-            className="flex justify-between text-sm"
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={data}
+            dataKey="value"
+            outerRadius={100}
+            label
           >
-            <span className="text-gray-600">
-              {t._id === "unknown"
-                ? "Unknown"
-                : `${t._id}+`}
-            </span>
-            <span className="font-medium">
-              {t.count}
-            </span>
-          </div>
-        ))}
-      </div>
+            {data.map((_, i) => (
+              <Cell key={i} fill={COLORS[i % COLORS.length]} />
+            ))}
+          </Pie>
+          <Tooltip />
+        </PieChart>
+      </ResponsiveContainer>
     </div>
   );
 }
