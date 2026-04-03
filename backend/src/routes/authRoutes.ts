@@ -12,11 +12,12 @@ import { trackDevice } from "../middleware/trackDevice";
 const router = express.Router();
 
 /**
- * Register
+ * Register (Public Beta)
  */
 router.post(
   "/register",
-  registerUser, trackDevice
+  trackDevice,
+  registerUser
 );
 
 /**
@@ -24,7 +25,8 @@ router.post(
  */
 router.post(
   "/login",
-  loginUser, trackDevice
+  trackDevice,
+  loginUser
 );
 
 /**
@@ -37,4 +39,3 @@ router.get(
 );
 
 export default router;
-

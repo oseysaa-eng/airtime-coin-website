@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 
 import User from "../models/User";
-import InviteCode from "../models/InviteCode";
+
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 const JWT_EXPIRES_IN = "30d";
@@ -29,10 +29,13 @@ async function generateReferralCode(): Promise<string> {
   }
 }
 
+
+
 /**
  * REGISTER USER
  * Invite-only beta safe
  */
+
 export const registerUser = async (
   req: Request,
   res: Response
@@ -43,7 +46,7 @@ export const registerUser = async (
       password,
       name,
       fullName,
-      inviteCode,
+      referralCode, // OPTIONAL now
     } = req.body;
 
     /* ---------------- VALIDATION ---------------- */
@@ -51,25 +54,6 @@ export const registerUser = async (
     if (!email || !password)
       return res.status(400).json({
         message: "Email and password required",
-      });
-
-    if (!inviteCode)
-      return res.status(400).json({
-        message: "Invite code required",
-      });
-
-    /* ---------------- VALIDATE INVITE ---------------- */
-
-    const invite = await InviteCode.findOne({
-      code: inviteCode.toUpperCase(),
-      active: true,
-      usedBy: null,
-    });
-
-    if (!invite)
-      return res.status(403).json({
-        message:
-          "Invalid or already used invite code",
       });
 
     /* ---------------- CHECK USER EXISTS ---------------- */
@@ -87,89 +71,85 @@ export const registerUser = async (
 
     const hash = await bcrypt.hash(password, 12);
 
-    /* ---------------- GENERATE SAFE VALUES ---------------- */
+    /* ---------------- GENERATE USER REFERRAL CODE ---------------- */
 
-    const referralCode =
+    const newReferralCode =
       await generateReferralCode();
 
     const userId =
       new mongoose.Types.ObjectId().toString();
 
+    /* ---------------- OPTIONAL REFERRAL VALIDATION ---------------- */
+
+    let referredBy = null;
+
+    if (referralCode) {
+      const refUser = await User.findOne({
+        referralCode: referralCode.toUpperCase(),
+      });
+
+      if (refUser) {
+        referredBy = refUser._id;
+
+        // 👉 (Optional) reward logic later
+        // refUser.totalReferrals += 1;
+        // await refUser.save();
+      }
+    }
+
     /* ---------------- CREATE USER ---------------- */
 
     const user = await User.create({
       userId,
-
       email: email.toLowerCase(),
-
       password: hash,
-
       name: name || "",
-
       fullName: fullName || "",
-
-      referralCode,
-
+      referralCode: newReferralCode,
+      referredBy, // 👈 store who referred
       balance: 0,
-
       minutes: 0,
-
       atc: 0,
-
       rate: 0,
-
       totalEarnings: 0,
-
       totalMinutes: 0,
-
       pushTokens: [],
-
-      earlyAdopter: true,
-
+      earlyAdopter: false, // now public
       role: "user",
     });
 
-    /* ---------------- MARK INVITE USED ---------------- */
+    /* ---------------- JWT ---------------- */
 
-    invite.usedBy = user._id;
-
-    invite.usedAt = new Date();
-
-    invite.active = false;
-
-    await invite.save();
-
-    /* ---------------- GENERATE TOKEN ---------------- */
+    if (!JWT_SECRET)
+      throw new Error("JWT_SECRET missing");
 
     const token = jwt.sign(
       { id: user._id },
       JWT_SECRET,
-      {
-        expiresIn: JWT_EXPIRES_IN,
-      }
+      { expiresIn: JWT_EXPIRES_IN }
     );
 
-    /* ---------------- RESPONSE ---------------- */
+    /* ---------------- SAFE RESPONSE ---------------- */
+
+    const userSafe = user.toObject();
+    delete userSafe.password;
 
     return res.status(201).json({
       message: "Registered successfully",
       token,
-      user,
+      user: userSafe,
     });
 
   } catch (error: any) {
-
-    console.error(
-      "REGISTER CRITICAL ERROR:",
-      error
-    );
+    console.error("REGISTER ERROR:", error);
 
     return res.status(500).json({
       message: "Server error",
     });
-
   }
 };
+
+
 
 /**
  * LOGIN USER
@@ -187,6 +167,7 @@ export const loginUser = async (
       return res.status(400).json({
         message: "Email and password required"
       });
+      
 
     // IMPORTANT: explicitly select password
     const user = await User.findOne({

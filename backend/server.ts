@@ -90,7 +90,7 @@ import adminUtilityAnalyticsRoutes from "./src/routes/admin/adminUtilityAnalytic
 import utilityPricingRoutes from "./src/routes/admin/utilityPricingRoutes";
 import adminEmissionRoutes from "./src/routes/admin/adminEmissionRoutes";
 import adminPriceRoutes from "./src/routes/admin/adminPriceRoutes";
-import adminInviteRoutes from "./src/routes/admin/adminInviteRoutes";
+
 
 // USER ROUTES
 
@@ -144,7 +144,7 @@ app.use("/api/admin/utility/analytics", adminUtilityAnalyticsRoutes);
 app.use("/api/admin/utility/pricing", utilityPricingRoutes);
 app.use("/api/admin/emission", adminEmissionRoutes);
 app.use("/api/admin/price", adminPriceRoutes);
-app.use("/api/admin/invites", adminInviteRoutes);
+
 
 // USER
 
@@ -233,9 +233,6 @@ io.on("connection", (socket: any) => {
     console.log("🔴 User disconnected:", socket.userId);
   });
 });
-
-
-
 
 
 /* ───────────────────────── INITIALIZE SOCKETS ───────────────────────── */
