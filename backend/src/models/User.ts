@@ -9,7 +9,10 @@ export interface IUser extends Document {
   profileImage?: string;
 
   referralCode?: string;
-  referredBy?: string | null;
+  referredBy?: mongoose.Types.ObjectId | null;
+
+  referralCount: number;
+  referralEarnings: number;
 
   balance: number;
   minutes: number;
@@ -19,17 +22,18 @@ export interface IUser extends Document {
   totalEarnings: number;
   totalMinutes: number;
 
-  // 🔥 NEW (CALL MINING)
+  // 🔥 CALL MINING
   totalCalls: number;
   lastCallAt?: Date;
   fraudScore: number;
 
   pushTokens: string[];
+
   notifications: {
-  earnings: boolean;
-  fraud: boolean;
-  promo: boolean;
-};
+    earnings: boolean;
+    fraud: boolean;
+    promo: boolean;
+  };
 
   earlyAdopter: boolean;
   pausedUntil?: Date;
@@ -83,8 +87,20 @@ const UserSchema = new Schema<IUser>(
     },
 
     referredBy: {
-      type: String,
+      type: Schema.Types.ObjectId,
+      ref: "User",
       default: null,
+      index: true,
+    },
+
+    referralCount: {
+      type: Number,
+      default: 0,
+    },
+
+    referralEarnings: {
+      type: Number,
+      default: 0,
     },
 
     /* ================= WALLET ================= */
@@ -119,7 +135,7 @@ const UserSchema = new Schema<IUser>(
       default: 0,
     },
 
-    /* ================= CALL MINING (🔥 NEW) ================= */
+    /* ================= CALL MINING ================= */
 
     totalCalls: {
       type: Number,
@@ -134,15 +150,17 @@ const UserSchema = new Schema<IUser>(
     fraudScore: {
       type: Number,
       default: 0,
+      index: true,
     },
 
     /* ================= SYSTEM ================= */
 
-notifications: {
-  earnings: { type: Boolean, default: true },
-  fraud: { type: Boolean, default: true },
-  promo: { type: Boolean, default: true },
-},
+    notifications: {
+      earnings: { type: Boolean, default: true },
+      fraud: { type: Boolean, default: true },
+      promo: { type: Boolean, default: true },
+    },
+
     pushTokens: {
       type: [String],
       default: [],
@@ -157,19 +175,29 @@ notifications: {
       type: Date,
       default: null,
     },
-    
 
     role: {
       type: String,
       enum: ["user", "admin"],
       default: "user",
+      index: true,
     },
-    
   },
   {
     timestamps: true,
   }
 );
+
+/* ================= INDEXES ================= */
+
+// Fast referral lookups
+UserSchema.index({ referralCode: 1 });
+
+// Fraud monitoring
+UserSchema.index({ fraudScore: -1 });
+
+// Growth analytics
+UserSchema.index({ createdAt: -1 });
 
 export default mongoose.models.User ||
   mongoose.model<IUser>("User", UserSchema);

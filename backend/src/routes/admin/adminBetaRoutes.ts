@@ -1,7 +1,6 @@
 import express, { Request, Response } from "express";
 import adminAuth from "../../middleware/adminAuth";
 import AdminAuditLog from "../../models/AdminAuditLog";
-import InviteCode from "../../models/InviteCode";
 import SystemSettings from "../../models/SystemSettings";
 
 const router = express.Router();
@@ -20,10 +19,13 @@ router.get("/", adminAuth, async (_req: Request, res: Response) => {
       success: true,
       beta: settings.beta,
       incidentMode: settings.incidentMode,
+      isPublic: !settings.beta?.active, // ✅ added clarity
     });
   } catch (err) {
     console.error("BETA FETCH ERROR:", err);
-    res.status(500).json({ message: "Failed to load beta settings" });
+    res.status(500).json({
+      message: "Failed to load beta settings",
+    });
   }
 });
 
@@ -81,7 +83,7 @@ router.post("/", adminAuth, async (req: any, res: Response) => {
 
     await settings.save();
 
-    /* 🧾 Audit */
+    /* 🧾 Audit Log */
     await AdminAuditLog.create({
       adminId: req.admin._id,
       action: "BETA_SETTINGS_UPDATED",
@@ -91,10 +93,13 @@ router.post("/", adminAuth, async (req: any, res: Response) => {
     res.json({
       success: true,
       beta: settings.beta,
+      isPublic: !settings.beta.active,
     });
   } catch (err) {
     console.error("BETA UPDATE ERROR:", err);
-    res.status(500).json({ message: "Failed to update beta settings" });
+    res.status(500).json({
+      message: "Failed to update beta settings",
+    });
   }
 });
 
@@ -115,7 +120,7 @@ router.post("/emergency", adminAuth, async (req: any, res: Response) => {
     settings.incidentMode.activatedAt = active ? new Date() : null;
     settings.incidentMode.activatedBy = active ? req.admin._id : null;
 
-    /* 🔥 Hard safety */
+    /* 🔥 HARD SAFETY LOCK */
     if (active) {
       settings.beta.showConversion = false;
       settings.beta.showWithdrawals = false;
@@ -124,6 +129,7 @@ router.post("/emergency", adminAuth, async (req: any, res: Response) => {
 
     await settings.save();
 
+    /* 🧾 Audit Log */
     await AdminAuditLog.create({
       adminId: req.admin._id,
       action: active
@@ -138,86 +144,8 @@ router.post("/emergency", adminAuth, async (req: any, res: Response) => {
     });
   } catch (err) {
     console.error("EMERGENCY ERROR:", err);
-    res.status(500).json({ message: "Failed to toggle emergency mode" });
-  }
-});
-
-/* =====================================================
-   🎟 GENERATE INVITE CODES
-   POST /api/admin/beta/invites/generate
-===================================================== */
-router.post("/invites/generate", adminAuth, async (req: any, res: Response) => {
-  try {
-    let { count } = req.body;
-    count = Number(count);
-
-    if (!count || count <= 0) {
-      return res.status(400).json({
-        message: "Invalid count value",
-      });
-    }
-
-    if (count > 100) {
-      return res.status(400).json({
-        message: "Maximum 100 codes per request",
-      });
-    }
-
-    const codes = [];
-
-    for (let i = 0; i < count; i++) {
-      let code: string;
-      let exists = true;
-
-      while (exists) {
-        code = `ATC-${Math.random()
-          .toString(36)
-          .substring(2, 8)
-          .toUpperCase()}`;
-
-        exists = await InviteCode.exists({ code });
-      }
-
-      const newCode = await InviteCode.create({
-        code,
-        createdBy: req.admin._id,
-      });
-
-      codes.push(newCode);
-    }
-
-    res.json({
-      success: true,
-      count: codes.length,
-      codes,
-    });
-  } catch (err) {
-    console.error("INVITE GENERATION ERROR:", err);
     res.status(500).json({
-      message: "Failed to generate invite codes",
-    });
-  }
-});
-
-/* =====================================================
-   📋 LIST INVITE CODES
-   GET /api/admin/beta/invites
-===================================================== */
-router.get("/invites", adminAuth, async (_req: Request, res: Response) => {
-  try {
-    const codes = await InviteCode.find()
-      .populate("usedBy", "email")
-      .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      total: codes.length,
-      codes,
-    });
-  } catch (err) {
-    console.error("INVITE LIST ERROR:", err);
-    res.status(500).json({
-      message: "Failed to fetch invite codes",
+      message: "Failed to toggle emergency mode",
     });
   }
 });

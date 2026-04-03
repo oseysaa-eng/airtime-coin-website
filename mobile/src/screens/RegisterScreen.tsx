@@ -50,9 +50,6 @@ export default function RegisterScreen({ navigation }: any) {
   else if (password.length < 6)
     newErrors.password = "Minimum 6 characters";
 
-  if (!referralCode.trim())
-    newErrors.referralCode = "Invite code required";
-
   if (!acceptTerms)
     newErrors.terms = "Accept Terms required";
 
@@ -75,20 +72,14 @@ const handleRegister = async () => {
     setLoading(true);
 
     const res = await API.post("/api/auth/register", {
-
-      email: email.trim().toLowerCase(),
-
-      password,
-
-      name: username.trim(),
-
-      fullName: fullName.trim(),
-
-      referralCode: referralCode || null,
-
-      inviteCode: referralCode || null, // REQUIRED FOR PRIVATE BETA
-
-    });
+  email: email.trim().toLowerCase(),
+  password,
+  name: username.trim(),
+  fullName: fullName.trim(),
+  referralCode: referralCode
+    ? referralCode.trim().toUpperCase()
+    : null,
+});
     
 
     if (!res?.data?.token) {
@@ -211,7 +202,7 @@ const handleRegister = async () => {
           )}
 
           {/* Referral Code */}
-          <Text style={styles.label}>Invite Code</Text>
+          <Text style={styles.label}>Referral Code (Optional)</Text>
 
             <TextInput
               placeholder="Enter your invite code"
