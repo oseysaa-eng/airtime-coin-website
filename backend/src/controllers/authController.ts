@@ -2,84 +2,68 @@ import bcrypt from "bcryptjs";
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-
 import User from "../models/User";
 
+const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
 
-const JWT_SECRET = process.env.JWT_SECRET as string;
-const JWT_EXPIRES_IN = "30d";
+const ACCESS_EXPIRES = "1d";
+const REFRESH_EXPIRES = "30d";
 
-/**
- * Generate unique referral code safely
- */
+/* =============================
+   GENERATE REFERRAL CODE
+============================= */
 async function generateReferralCode(): Promise<string> {
   while (true) {
     const code =
-      "ATC" +
-      Math.random()
-        .toString(36)
-        .substring(2, 8)
-        .toUpperCase();
+      "ATC" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    const exists = await User.findOne({
-      referralCode: code,
-    });
-
+    const exists = await User.findOne({ referralCode: code });
     if (!exists) return code;
   }
 }
 
+/* =============================
+   GENERATE TOKENS
+============================= */
+function generateTokens(userId: string) {
+  const accessToken = jwt.sign({ id: userId }, JWT_SECRET, {
+    expiresIn: ACCESS_EXPIRES,
+  });
 
+  const refreshToken = jwt.sign({ id: userId }, JWT_REFRESH_SECRET, {
+    expiresIn: REFRESH_EXPIRES,
+  });
 
-/**
- * REGISTER USER
- * Invite-only beta safe
- */
+  return { accessToken, refreshToken };
+}
 
-export const registerUser = async (
-  req: Request,
-  res: Response
-) => {
+/* =============================
+   REGISTER
+============================= */
+export const registerUser = async (req: Request, res: Response) => {
   try {
-    const {
-      email,
-      password,
-      name,
-      fullName,
-      referralCode, // OPTIONAL now
-    } = req.body;
+    const { email, password, name, fullName, referralCode } = req.body;
 
-    /* ---------------- VALIDATION ---------------- */
-
-    if (!email || !password)
+    if (!email || !password) {
       return res.status(400).json({
         message: "Email and password required",
       });
+    }
 
-    /* ---------------- CHECK USER EXISTS ---------------- */
-
-    const exists = await User.findOne({
+    const existing = await User.findOne({
       email: email.toLowerCase(),
     });
 
-    if (exists)
+    if (existing) {
       return res.status(409).json({
         message: "User already exists",
       });
-
-    /* ---------------- HASH PASSWORD ---------------- */
+    }
 
     const hash = await bcrypt.hash(password, 12);
 
-    /* ---------------- GENERATE USER REFERRAL CODE ---------------- */
-
-    const newReferralCode =
-      await generateReferralCode();
-
-    const userId =
-      new mongoose.Types.ObjectId().toString();
-
-    /* ---------------- OPTIONAL REFERRAL VALIDATION ---------------- */
+    const newReferralCode = await generateReferralCode();
 
     let referredBy = null;
 
@@ -90,23 +74,17 @@ export const registerUser = async (
 
       if (refUser) {
         referredBy = refUser._id;
-
-        // 👉 (Optional) reward logic later
-        // refUser.totalReferrals += 1;
-        // await refUser.save();
       }
     }
 
-    /* ---------------- CREATE USER ---------------- */
-
     const user = await User.create({
-      userId,
+      userId: new mongoose.Types.ObjectId().toString(),
       email: email.toLowerCase(),
       password: hash,
       name: name || "",
       fullName: fullName || "",
       referralCode: newReferralCode,
-      referredBy, // 👈 store who referred
+      referredBy,
       balance: 0,
       minutes: 0,
       atc: 0,
@@ -114,147 +92,151 @@ export const registerUser = async (
       totalEarnings: 0,
       totalMinutes: 0,
       pushTokens: [],
-      earlyAdopter: false, // now public
+      earlyAdopter: false,
       role: "user",
     });
 
-    /* ---------------- JWT ---------------- */
+    const { accessToken, refreshToken } = generateTokens(user._id.toString());
 
-    if (!JWT_SECRET)
-      throw new Error("JWT_SECRET missing");
+  
 
-    const token = jwt.sign(
-      { id: user._id },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
-
-    /* ---------------- SAFE RESPONSE ---------------- */
-
-    const userSafe = user.toObject();
-    delete userSafe.password;
+    const safeUser = {
+      _id: user._id,
+      email: user.email,
+      name: user.name,
+    };
 
     return res.status(201).json({
-      message: "Registered successfully",
-      token,
-      user: userSafe,
-    });
+  message: "Registered successfully",
+  token: accessToken, // keep frontend compatibility
+  refreshToken,
+  user: safeUser,
+});
+
+  } catch (err) {
+    console.error("REGISTER ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/* =============================
+   LOGIN
+============================= */
+export const loginUser = async (req: Request, res: Response) => {
+  try {
+    const { email, password, fingerprint } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Email and password required",
+      });
+    }
+
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+    }).select("+password");
+
+    if (!user || !user.password) {
+      return res.status(401).json({
+        message: "Invalid email or password",
+      });
+    }
+
+    const valid = await bcrypt.compare(password, user.password);
+
+    if (!valid) {
+      return res.status(401).json({
+        message: "Invalid email or password",
+      });
+    }
+
+    /* 🔐 DEVICE TRACKING */
+    if (fingerprint) {
+      user.lastDevice = fingerprint;
+      await user.save();
+    }
+
+    const { accessToken, refreshToken } = generateTokens(user._id.toString());
+
+    const safeUser = {
+      _id: user._id,
+      email: user.email,
+      name: user.name,
+    };
+    return res.status(200).json({
+  message: "Login successful",
+  token: accessToken,
+  refreshToken,
+  user: safeUser,
+});
+
 
   } catch (error: any) {
-    console.error("REGISTER ERROR:", error);
-
+    console.error("LOGIN ERROR:", error);
     return res.status(500).json({
-      message: "Server error",
+      message: "Login failed",
     });
   }
 };
 
-
-
-/**
- * LOGIN USER
- */
-export const loginUser = async (
-  req: Request,
-  res: Response
-) => {
-
+/* =============================
+   REFRESH TOKEN (🔥 REQUIRED)
+============================= */
+export const refreshAuthToken = async (req: Request, res: Response) => {
   try {
+    const refresh = req.body.refreshToken;
 
-    const { email, password } = req.body;
+    if (!refresh) {
+      return res.status(401).json({ message: "No refresh token" });
+    }
 
-    if (!email || !password)
-      return res.status(400).json({
-        message: "Email and password required"
-      });
-      
+    const decoded: any = jwt.verify(refresh, JWT_REFRESH_SECRET);
 
-    // IMPORTANT: explicitly select password
-    const user = await User.findOne({
-      email: email.toLowerCase()
-    }).select("+password");
+    // ✅ VERIFY USER STILL EXISTS
+    const user = await User.findById(decoded.id);
 
-    if (!user)
-      return res.status(401).json({
-        message: "Invalid email or password"
-      });
+    if (!user) {
+      return res.status(401).json({ message: "User no longer exists" });
+    }
 
-    if (!user.password)
-      return res.status(500).json({
-        message: "User password missing (data integrity error)"
-      });
-
-    const valid = await bcrypt.compare(
-      password,
-      user.password
-    );
-
-    if (!valid)
-      return res.status(401).json({
-        message: "Invalid email or password"
-      });
-
-    if (!process.env.JWT_SECRET)
-      throw new Error("JWT_SECRET missing");
-
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "30d" }
+    // 🔁 ROTATE TOKENS (BEST PRACTICE)
+    const { accessToken, refreshToken: newRefresh } = generateTokens(
+      user._id.toString()
     );
 
     return res.json({
-      message: "Login successful",
-      token,
-      user
+      token: accessToken,
+      refreshToken: newRefresh, // 🔥 NEW refresh token
     });
 
-  }
-  catch (error: any) {
-
-    console.error(
-      "LOGIN CRITICAL ERROR:",
-      error
-    );
-
-    return res.status(500).json({
-      message: "Login failed",
-      error: error.message
+  } catch (err) {
+    return res.status(401).json({
+      message: "Invalid refresh token",
     });
-
   }
-
 };
 
-/**
- * GET CURRENT USER
- */
-export const getMe = async (
-  req: any,
-  res: Response
-) => {
-
+/* =============================
+   GET CURRENT USER
+============================= */
+export const getMe = async (req: any, res: Response) => {
   try {
+    const user = await User.findById(req.user.id)
+  .select("-password")
+  .lean();
 
-    const user = await User.findById(
-      req.user.id
-    ).select("-password");
-
-    if (!user)
+    if (!user) {
       return res.status(404).json({
         message: "User not found",
       });
+    }
 
     return res.json(user);
 
   } catch (error) {
-
     console.error("GET ME ERROR:", error);
-
     return res.status(500).json({
       message: "Server error",
     });
-
   }
-
 };

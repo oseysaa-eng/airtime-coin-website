@@ -5,10 +5,7 @@ import React, {
     useState,
 } from "react";
 
-import {
-    connectSocket,
-    getSocket,
-} from "../services/socket";
+import { onSocketEvent } from "../services/socket";
 
 type Wallet = {
   balance: number;
@@ -35,34 +32,32 @@ export function WalletProvider({
     minutes: 0,
   });
 
-  useEffect(() => {
-    let mounted = true;
+useEffect(() => {
+  let cleanup: (() => void) | null = null;
+  let mounted = true;
 
-    const init = async () => {
-      await connectSocket();
-      const socket = getSocket();
+  const init = async () => {
+    cleanup = await onSocketEvent("WALLET_UPDATE", (data) => {
+      if (!mounted) return;
 
-      if (!socket) return;
-
-      socket.on("WALLET_UPDATE", data => {
-        if (!mounted) return;
-
-        setWallet({
-          balance: data.balance ?? 0,
-          atc: data.atc ?? 0,
-          minutes: data.minutes ?? 0,
-        });
+      setWallet({
+        balance: data.balance ?? 0,
+        atc: data.atc ?? 0,
+        minutes: data.minutes ?? 0,
       });
-    };
+    });
+  };
 
-    init();
+  init();
 
-    return () => {
-      mounted = false;
-      const socket = getSocket();
-      socket?.off("WALLET_UPDATE");
-    };
-  }, []);
+  return () => {
+    mounted = false;
+
+    if (cleanup) {
+      cleanup(); // ✅ safe unsubscribe
+    }
+  };
+}, []);
 
   return (
     <WalletContext.Provider value={{ wallet }}>

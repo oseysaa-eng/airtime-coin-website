@@ -20,8 +20,6 @@ import { getDeviceFingerprint } from "../utils/deviceFingerprint";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { connectSocket } from "../services/socket";
 
-
-
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,24 +34,36 @@ export default function LoginScreen({ navigation }: any) {
   const [darkMode, setDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // ✅ LOAD BIOMETRIC + DEVICE FINGERPRINT
+  /* =============================
+     INIT BIOMETRIC + DEVICE
+  ============================= */
   useEffect(() => {
     (async () => {
-      const compatible = await LocalAuthentication.hasHardwareAsync();
-      const enrolled = await LocalAuthentication.isEnrolledAsync();
-      setBiometricAvailable(compatible && enrolled);
-      const fp = await getDeviceFingerprint();
-      setFingerprint(fp);
+      try {
+        const compatible = await LocalAuthentication.hasHardwareAsync();
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        setBiometricAvailable(compatible && enrolled);
+
+        const fp = await getDeviceFingerprint();
+        setFingerprint(fp);
+      } catch (err) {
+        console.log("Init error:", err);
+      }
     })();
   }, []);
 
   const theme = darkMode ? darkStyles : lightStyles;
 
+  /* =============================
+     VALIDATION
+  ============================= */
   const validate = () => {
     setEmailError("");
     setPasswordError("");
 
-    if (!email || !email.includes("@")) {
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail || !cleanEmail.includes("@")) {
       setEmailError("Enter a valid email");
       return false;
     }
@@ -66,80 +76,95 @@ export default function LoginScreen({ navigation }: any) {
     return true;
   };
 
-  // ===============================
-  // EMAIL LOGIN (PRIMARY)
-  // ===============================
+  /* =============================
+     LOGIN
+  ============================= */
+  const handleLogin = async () => {
+    if (loading) return; // 🔥 prevent spam clicks
+    if (!validate()) return;
 
-const handleLogin = async () => {
-  if (!validate()) return;
-
-  if (!fingerprint) {
-    Alert.alert("Device Error", "Unable to verify this device");
-    return;
-  }
-
-  try {
-    setLoading(true);
-
-    const res = await API.post("/api/auth/login", {
-      email,
-      password,
-      fingerprint,
-    });
-
-    if (!res.data?.token) {
-      throw new Error("Invalid login response");
+    if (!fingerprint) {
+      Alert.alert("Device Error", "Unable to verify this device");
+      return;
     }
 
-    const { token, refreshToken, user } = res.data;
+    try {
+      setLoading(true);
 
-    // ✅ USE CORRECT KEYS (VERY IMPORTANT)
-    await AsyncStorage.setItem("userToken", token);
-    await AsyncStorage.setItem("refreshToken", refreshToken);
-    await AsyncStorage.setItem("userId", user._id);
-    await AsyncStorage.setItem("hasAccount", "true");
+      const res = await API.post("/api/auth/login", {
+        email: email.trim(),
+        password,
+        fingerprint,
+      });
 
-    // 🔌 CONNECT SOCKET (auto joins inside)
-    await connectSocket();
+      if (!res.data?.token) {
+        throw new Error("Invalid login response");
+      }
 
-    console.log("✅ Login + Socket connected");
+      const { token, refreshToken, user } = res.data;
 
-    // 🚀 Navigate
-    navigation.replace("MainTabs");
+      /* =============================
+         STORE SESSION
+      ============================= */
+      await AsyncStorage.multiSet([
+        ["userToken", token],
+        ["refreshToken", refreshToken || ""],
+        ["userId", user._id],
+        ["hasAccount", "true"],
+      ]);
 
-  } catch (err: any) {
-    Alert.alert(
-      "Login Failed",
-      err?.response?.data?.message || "Invalid credentials"
-    );
-  } finally {
-    setLoading(false);
-  }
-};
+      /* =============================
+         CONNECT SOCKET
+      ============================= */
+      await connectSocket();
 
-  // ===============================
-  // BIOMETRIC LOGIN (TOKEN ONLY)
-  // ===============================
-const handleBiometricAuth = async () => {
-  const result = await LocalAuthentication.authenticateAsync({
-    promptMessage: "Authenticate",
-  });
+      console.log("✅ Login successful");
 
-  if (!result.success) return;
+      navigation.replace("MainTabs");
 
-  const token = await AsyncStorage.getItem("userToken");
+    } catch (err: any) {
+      console.log("Login error:", err);
 
-  if (!token) {
-    Alert.alert("Session expired", "Please login again");
-    return;
-  }
+      if (!err.response) {
+        Alert.alert("Network Error", "Check your internet connection");
+      } else {
+        Alert.alert(
+          "Login Failed",
+          err?.response?.data?.message || "Invalid credentials"
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // 🔌 reconnect socket on biometric login
-  await connectSocket();
+  /* =============================
+     BIOMETRIC LOGIN
+  ============================= */
+  const handleBiometricAuth = async () => {
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: "Authenticate",
+        fallbackLabel: "Use password",
+      });
 
-  navigation.replace("AppDrawer");
-};
+      if (!result.success) return;
 
+      const token = await AsyncStorage.getItem("userToken");
+
+      if (!token) {
+        Alert.alert("Session expired", "Please login again");
+        return;
+      }
+
+      await connectSocket();
+
+      navigation.replace("MainTabs");
+
+    } catch (err) {
+      console.log("Biometric error:", err);
+    }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -163,6 +188,7 @@ const handleBiometricAuth = async () => {
           Login to continue earning with Airtime Coin
         </Text>
 
+        {/* EMAIL */}
         <TextInput
           style={[theme.input, emailError && { borderColor: "#ef4444" }]}
           placeholder="Email"
@@ -171,9 +197,9 @@ const handleBiometricAuth = async () => {
           value={email}
           onChangeText={setEmail}
         />
+        {emailError && <Text style={theme.errorText}>{emailError}</Text>}
 
-        {emailError ? <Text style={theme.errorText}>{emailError}</Text> : null}
-
+        {/* PASSWORD */}
         <View style={theme.passwordWrapper}>
           <TextInput
             style={[theme.passwordInput, passwordError && { borderColor: "#ef4444" }]}
@@ -191,13 +217,16 @@ const handleBiometricAuth = async () => {
           </TouchableOpacity>
         </View>
 
-        {passwordError ? (
+        {passwordError && (
           <Text style={theme.errorText}>{passwordError}</Text>
-        ) : null}
+        )}
 
-
+        {/* LOGIN BUTTON */}
         <TouchableOpacity
-          style={[theme.loginButton, loading && { opacity: 0.6 }]}
+          style={[
+            theme.loginButton,
+            (loading || !email || !password) && { opacity: 0.6 },
+          ]}
           onPress={handleLogin}
           disabled={loading}
         >
@@ -208,6 +237,7 @@ const handleBiometricAuth = async () => {
           )}
         </TouchableOpacity>
 
+        {/* BIOMETRIC */}
         {biometricAvailable && (
           <TouchableOpacity
             onPress={handleBiometricAuth}
@@ -218,8 +248,11 @@ const handleBiometricAuth = async () => {
           </TouchableOpacity>
         )}
 
-            <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-          <Text>Don't have an account? Register</Text>
+        {/* REGISTER */}
+        <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+          <Text style={{ textAlign: "center" }}>
+            Don't have an account? Register
+          </Text>
         </TouchableOpacity>
 
       </ScrollView>

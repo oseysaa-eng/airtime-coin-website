@@ -1,5 +1,6 @@
 import { NativeModules, NativeEventEmitter } from "react-native";
 import { v4 as uuidv4 } from "uuid";
+import { getSocket } from "./socket"; // ✅ FIXED
 
 const { CallDetector } = NativeModules;
 
@@ -7,15 +8,19 @@ const emitter = CallDetector
   ? new NativeEventEmitter(CallDetector)
   : null;
 
-const API_URL = "https://atc-backend-cn4f.onrender.com";
-
+/* =============================
+   STATE
+============================= */
 let isOverlayRunning = false;
-let currentNumber = null;
-let activeSessionId = null;
+let currentNumber: string | null = null;
+let activeSessionId: string | null = null;
 let isInitialized = false;
+let lastCallTimestamp = 0;
 
-export const initCallMining = (onStart, onEnd) => {
-
+/* =============================
+   INIT
+============================= */
+export const initCallMining = (onStart?: any, onEnd?: any) => {
   if (!CallDetector || !emitter) {
     console.warn("❌ CallDetector not found");
     return () => {};
@@ -27,128 +32,162 @@ export const initCallMining = (onStart, onEnd) => {
   }
 
   isInitialized = true;
-
   console.log("✅ CallMining initialized");
 
-  /* ================================
-     CLEAR OLD LISTENERS
-  ================================= */
+  /* =============================
+     CLEAN OLD LISTENERS
+  ============================= */
   try {
     emitter.removeAllListeners("CALL_STARTED");
     emitter.removeAllListeners("CALL_ENDED");
   } catch {}
 
-  /* ================================
-     CALL STARTED
-  ================================= */
-
+  /* =============================
+     CALL START
+  ============================= */
   const startSub = emitter.addListener("CALL_STARTED", async (data = {}) => {
-  console.log("📞 CALL STARTED", data);
+    const now = Date.now();
 
-  const name = data.name || "Unknown Caller";
-  const number = data.number || "Unknown";
-  const photo = data.photo || null;
+    const name = data.name || "Unknown Caller";
+    const number = data.number || "Unknown";
+    const photo = data.photo || null;
 
-  // 🚫 BLOCK TRUE DUPLICATES ONLY
-  if (currentNumber === number && activeSessionId) {
-    console.log("⚠️ Duplicate ignored:", number);
-    return;
-  }
+    console.log("📞 CALL START:", number);
 
-  // ✅ SET NUMBER FIRST (CRITICAL FIX)
-  currentNumber = number;
+    /* 🚫 PREVENT RAPID DUPLICATES (1.5s window) */
+    if (now - lastCallTimestamp < 1500) {
+      console.log("⚠️ Rapid duplicate ignored");
+      return;
+    }
 
-  // ✅ CREATE SESSION
-  activeSessionId = uuidv4();
-  console.log("🆔 SESSION CREATED:", activeSessionId);
+    lastCallTimestamp = now;
 
-  /* ---------- START OVERLAY ---------- */
-  if (!isOverlayRunning) {
+    /* 🚫 BLOCK IF ACTIVE SESSION EXISTS */
+    if (activeSessionId) {
+      console.log("⚠️ Session already active, ignoring new start");
+      return;
+    }
+
+    /* =============================
+       CREATE SESSION
+    ============================= */
+    activeSessionId = uuidv4();
+    currentNumber = number;
+
+    console.log("🆔 Session:", activeSessionId);
+
+    /* =============================
+       START OVERLAY
+    ============================= */
+    if (!isOverlayRunning) {
+      try {
+        CallDetector.startOverlay(name, number, photo, "checking");
+        isOverlayRunning = true;
+      } catch (e) {
+        console.log("Overlay start error:", e);
+      }
+    }
+
+    /* =============================
+       EMIT TO BACKEND
+    ============================= */
     try {
-      CallDetector.startOverlay(name, number, photo, "checking");
-      isOverlayRunning = true;
+      const socket = await getSocket();
+
+      if (socket?.connected) {
+        socket.emit("call_start", {
+          sessionId: activeSessionId,
+          number,
+        });
+
+        console.log("🚀 call_start sent");
+      } else {
+        console.log("⚠️ Socket not connected (start)");
+      }
     } catch (e) {
-      console.log("Overlay start error:", e);
+      console.log("Socket start error:", e);
     }
-  }
 
-  /* ---------- EMIT TO BACKEND ---------- */
-  try {
-    if (global.socket?.connected) {
-      console.log("🚀 EMIT CALL START");
+    onStart && onStart(data);
+  });
 
-      global.socket.emit("call_start", {
-        sessionId: activeSessionId,
-        number,
-      });
+  /* =============================
+     CALL END
+  ============================= */
+  const endSub = emitter.addListener("CALL_ENDED", async (data = {}) => {
+    console.log("📞 CALL END");
 
-    } else {
-      console.log("⚠️ Socket not connected (start)");
+    const duration = data?.duration || 0;
+
+    if (!activeSessionId) {
+      console.log("⚠️ No active session → ignored");
+      return;
     }
-  } catch (e) {
-    console.log("Socket start error:", e);
-  }
 
-  onStart && onStart(data);
-});
+    const sessionId = activeSessionId;
 
-  /* ================================
-     CALL ENDED
-  ================================= */
-const endSub = emitter.addListener("CALL_ENDED", (data = {}) => {
-  console.log("📞 CALL ENDED");
+    console.log("🛑 Ending session:", sessionId);
 
-  const duration = data?.duration || 0;
-
-  if (!activeSessionId) {
-    console.log("❌ No session, skipping");
-    return;
-  }
-
-  console.log("🛑 Ending session:", activeSessionId);
-
-  try {
-    if (global.socket?.connected) {
-      console.log("🚀 EMIT CALL END");
-
-      global.socket.emit("call_end", {
-        sessionId: activeSessionId,
-        duration,
-      });
-    } else {
-      console.log("⚠️ Socket not connected (end)");
-    }
-  } catch (e) {
-    console.log("Socket end error:", e);
-  }
-
-  setTimeout(() => {
+    /* =============================
+       EMIT END
+    ============================= */
     try {
-      CallDetector.stopOverlay();
-    } catch {}
-  }, 1500);
+      const socket = await getSocket();
 
-  // ✅ RESET
-  activeSessionId = null;
-  currentNumber = null;
-  isOverlayRunning = false;
+      if (socket?.connected) {
+        socket.emit("call_end", {
+          sessionId,
+          duration,
+        });
 
-  onEnd && onEnd(duration);
-});
+        console.log("🚀 call_end sent");
+      } else {
+        console.log("⚠️ Socket not connected (end)");
+      }
+    } catch (e) {
+      console.log("Socket end error:", e);
+    }
 
-  /* ================================
-     START LISTENER
-  ================================= */
+    /* =============================
+       STOP OVERLAY (SAFE DELAY)
+    ============================= */
+    setTimeout(() => {
+      try {
+        CallDetector.stopOverlay();
+      } catch {}
+    }, 1200);
+
+    /* =============================
+       RESET STATE
+    ============================= */
+    activeSessionId = null;
+    currentNumber = null;
+    isOverlayRunning = false;
+
+    onEnd && onEnd(duration);
+  });
+
+  /* =============================
+     START NATIVE LISTENER
+  ============================= */
   try {
     CallDetector.start();
   } catch (e) {
     console.log("Start listener error:", e);
   }
 
-  /* ================================
-     NO CLEANUP (PERSISTENT ENGINE)
-  ================================= */
+  /* =============================
+     CLEANUP (OPTIONAL)
+  ============================= */
   return () => {
-    console.log("⚠️ Cleanup skipped (persistent)");
+    console.log("🧹 Cleaning CallMining");
+
+    try {
+      startSub.remove();
+      endSub.remove();
+      CallDetector.stopListening?.();
+    } catch {}
+
+    isInitialized = false;
   };
 };
