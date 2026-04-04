@@ -1,46 +1,34 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect } from "react";
-import { io } from "socket.io-client";
+import { onSocketEvent } from "../services/socket";
 import { useAppStore } from "../store/appStore";
-
-const SOCKET_URL = "http://192.168.1.217:5000";
 
 export const useAppSocket = () => {
   const setPinStatus = useAppStore(s => s.setPinStatus);
   const setKycStatus = useAppStore(s => s.setKycStatus);
 
   useEffect(() => {
-    let socket:any;
+    let cleanups: (() => void)[] = [];
 
-    (async () => {
-      const token = await AsyncStorage.getItem("userToken");
-      if (!token) return;
-
-      socket = io(SOCKET_URL, {
-        auth: { token },
-        transports: ["websocket"]
-      });
-
-      socket.on("connect", () => {
-        console.log("✅ App socket connected");
-      });
-
-      socket.emit("join");
-
-      // ✅ PIN real-time updates
-      socket.on("pin:update", payload => {
+    const init = async () => {
+      // ✅ PIN updates
+      const offPin = await onSocketEvent("pin:update", (payload) => {
         console.log("🔔 PIN Updated", payload);
         setPinStatus(payload.configured);
       });
 
-      // ✅ KYC real-time updates
-      socket.on("kyc:update", payload => {
+      // ✅ KYC updates
+      const offKyc = await onSocketEvent("kyc:update", (payload) => {
         console.log("🔔 KYC Update:", payload);
         setKycStatus(payload.status);
       });
 
-    })();
+      cleanups = [offPin, offKyc];
+    };
 
-    return () => socket?.disconnect();
+    init();
+
+    return () => {
+      cleanups.forEach(fn => fn && fn());
+    };
   }, []);
 };

@@ -9,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.provider.ContactsContract;
 import android.util.Log;
+import android.telephony.TelephonyCallback;
 
 import com.facebook.react.bridge.*;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
@@ -17,6 +18,9 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
 
     private TelephonyManager telephonyManager;
     private PhoneStateListener listener;
+
+    // ✅ FIXED: correct callback type
+    private TelephonyCallback telephonyCallback;
 
     private long callStartTime = 0;
     private boolean isListening = false;
@@ -34,102 +38,146 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
     @ReactMethod public void removeListeners(Integer count) {}
 
     /* ============================================
+       CALLBACK CLASS (ANDROID 12+)
+    ============================================ */
+    private class CallStateCallback extends TelephonyCallback implements TelephonyCallback.CallStateListener {
+        @Override
+        public void onCallStateChanged(int state) {
+            handleCallState(state, null);
+        }
+    }
+
+    /* ============================================
        START LISTENING
     ============================================ */
-
     @ReactMethod
     public void start() {
 
         if (isListening) return;
 
+        Context ctx = getReactApplicationContext();
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                getReactApplicationContext().checkSelfPermission(
-                        android.Manifest.permission.READ_PHONE_STATE
-                ) != PackageManager.PERMISSION_GRANTED) {
-            Log.d("CALL_DEBUG", "❌ Permission READ_PHONE_STATE not granted");
+                ctx.checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE)
+                        != PackageManager.PERMISSION_GRANTED) {
+            Log.d("CALL_DEBUG", "❌ Permission missing");
             return;
         }
 
         telephonyManager = (TelephonyManager)
-                getReactApplicationContext().getSystemService(Context.TELEPHONY_SERVICE);
+                ctx.getSystemService(Context.TELEPHONY_SERVICE);
 
         if (telephonyManager == null) return;
 
         isListening = true;
 
-        listener = new PhoneStateListener() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 
-            @Override
-            public void onCallStateChanged(int state, String incomingNumber) {
+            telephonyCallback = new CallStateCallback();
 
-                Log.d("CALL_DEBUG", "STATE: " + state + " NUMBER: " + incomingNumber);
+            telephonyManager.registerTelephonyCallback(
+                    ctx.getMainExecutor(),
+                    telephonyCallback
+            );
 
-                switch (state) {
+        } else {
 
-                    case TelephonyManager.CALL_STATE_OFFHOOK:
-
-                        if (callStartTime == 0) {
-
-                            callStartTime = System.currentTimeMillis();
-
-                            String safeNumber =
-                                    (incomingNumber == null || incomingNumber.isEmpty())
-                                            ? "Outgoing Call"
-                                            : incomingNumber;
-
-                            WritableMap caller = getContactDataSafe(safeNumber);
-
-                            sendEventSafe("CALL_STARTED", caller);
-                        }
-                        break;
-
-                    case TelephonyManager.CALL_STATE_IDLE:
-
-                        if (callStartTime != 0) {
-
-                            long duration =
-                                    (System.currentTimeMillis() - callStartTime) / 1000;
-
-                            WritableMap map = Arguments.createMap();
-                            map.putDouble("duration", duration);
-
-                            sendEventSafe("CALL_ENDED", map);
-
-                            callStartTime = 0;
-                        }
-                        break;
+            listener = new PhoneStateListener() {
+                @Override
+                public void onCallStateChanged(int state, String incomingNumber) {
+                    handleCallState(state, incomingNumber);
                 }
-            }
-        };
+            };
 
-        telephonyManager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE);
+            telephonyManager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE);
+        }
+    }
+
+    /* ============================================
+       HANDLE CALL STATE
+    ============================================ */
+    private void handleCallState(int state, String incomingNumber) {
+
+        Log.d("CALL_DEBUG", "STATE: " + state);
+
+        switch (state) {
+
+            case TelephonyManager.CALL_STATE_OFFHOOK:
+
+                if (callStartTime == 0) {
+
+                    callStartTime = System.currentTimeMillis();
+
+                    String number = (incomingNumber != null && !incomingNumber.isEmpty())
+                            ? incomingNumber
+                            : "Unknown";
+
+                    WritableMap caller = getContactDataSafe(number);
+
+                    startOverlay(
+                            caller.getString("name"),
+                            caller.getString("number"),
+                            caller.getString("photo"),
+                            caller.getString("spam")
+                    );
+
+                    sendEventSafe("CALL_STARTED", caller);
+                }
+                break;
+
+            case TelephonyManager.CALL_STATE_IDLE:
+
+                if (callStartTime != 0) {
+
+                    long duration =
+                            (System.currentTimeMillis() - callStartTime) / 1000;
+
+                    WritableMap map = Arguments.createMap();
+                    map.putDouble("duration", duration);
+
+                    stopOverlay();
+
+                    sendEventSafe("CALL_ENDED", map);
+
+                    callStartTime = 0;
+                }
+                break;
+        }
     }
 
     /* ============================================
        STOP LISTENING
     ============================================ */
-
     @ReactMethod
     public void stopListening() {
-        if (telephonyManager != null && listener != null) {
+
+        if (!isListening || telephonyManager == null) return;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+
+            if (telephonyCallback != null) {
+                telephonyManager.unregisterTelephonyCallback(telephonyCallback);
+                telephonyCallback = null;
+            }
+
+        } else if (listener != null) {
+
             telephonyManager.listen(listener, PhoneStateListener.LISTEN_NONE);
-            isListening = false;
+            listener = null;
         }
+
+        isListening = false;
     }
 
     /* ============================================
-       START OVERLAY
+       OVERLAY CONTROL
     ============================================ */
 
     @ReactMethod
     public void startOverlay(String name, String number, String photo, String spamStatus) {
-        Log.d("OVERLAY_DEBUG", "🔥 START OVERLAY");
 
         try {
-            Intent intent = new Intent(
-                    getReactApplicationContext(),
-                    OverlayService.class
-            );
+            Intent intent = new Intent(getReactApplicationContext(), OverlayService.class);
 
             intent.putExtra("name", name);
             intent.putExtra("number", number);
@@ -137,7 +185,7 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
             intent.putExtra("spam", spamStatus);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                getReactApplicationContext().startForegroundService(intent); // ✅ ONLY HERE
+                getReactApplicationContext().startForegroundService(intent);
             } else {
                 getReactApplicationContext().startService(intent);
             }
@@ -147,43 +195,13 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
         }
     }
 
-    /* ============================================
-       UPDATE OVERLAY
-    ============================================ */
-
-    @ReactMethod
-    public void updateOverlay(String spamStatus) {
-        try {
-            Intent intent = new Intent(
-                    getReactApplicationContext(),
-                    OverlayService.class
-            );
-
-            intent.putExtra("updateSpam", spamStatus);
-
-            getReactApplicationContext().startService(intent); // ✅ NORMAL SERVICE
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    /* ============================================
-       STOP OVERLAY
-    ============================================ */
-
     @ReactMethod
     public void stopOverlay() {
+
         try {
-            Intent intent = new Intent(
-                    getReactApplicationContext(),
-                    OverlayService.class
-            );
-
+            Intent intent = new Intent(getReactApplicationContext(), OverlayService.class);
             intent.putExtra("stop", true);
-
-            getReactApplicationContext().startService(intent); // ✅ NOT foreground
-
+            getReactApplicationContext().startService(intent);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -192,62 +210,39 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
     /* ============================================
        CONTACT RESOLVER
     ============================================ */
-
     private WritableMap getContactDataSafe(String number) {
 
         WritableMap map = Arguments.createMap();
-
-        if (number == null || number.trim().isEmpty()) {
-            map.putString("name", "Private Number");
-            map.putString("number", "Unknown");
-            map.putBoolean("isSaved", false);
-            map.putString("photo", null);
-            map.putString("spam", "unknown");
-            return map;
-        }
 
         Cursor cursor = null;
 
         try {
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                    getReactApplicationContext().checkSelfPermission(
-                            android.Manifest.permission.READ_CONTACTS
-                    ) != PackageManager.PERMISSION_GRANTED) {
+            cursor = getReactApplicationContext()
+                    .getContentResolver()
+                    .query(
+                            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                            null,
+                            ContactsContract.CommonDataKinds.Phone.NUMBER + " LIKE ?",
+                            new String[]{"%" + number + "%"},
+                            null
+                    );
 
-                map.putString("name", "Unknown Caller");
-                map.putBoolean("isSaved", false);
-                map.putString("photo", null);
+            if (cursor != null && cursor.moveToFirst()) {
+
+                int nameIndex = cursor.getColumnIndex(
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+                );
+
+                map.putString("name",
+                        nameIndex != -1 ? cursor.getString(nameIndex) : "Unknown Caller"
+                );
+
+                map.putBoolean("isSaved", true);
 
             } else {
-
-                cursor = getReactApplicationContext()
-                        .getContentResolver()
-                        .query(
-                                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                                null,
-                                ContactsContract.CommonDataKinds.Phone.NUMBER + " LIKE ?",
-                                new String[]{"%" + number + "%"},
-                                null
-                        );
-
-                if (cursor != null && cursor.moveToFirst()) {
-
-                    map.putString("name",
-                            cursor.getString(cursor.getColumnIndex(
-                                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)));
-
-                    map.putString("photo",
-                            cursor.getString(cursor.getColumnIndex(
-                                    ContactsContract.CommonDataKinds.Phone.PHOTO_URI)));
-
-                    map.putBoolean("isSaved", true);
-
-                } else {
-                    map.putString("name", "Unknown Caller");
-                    map.putBoolean("isSaved", false);
-                    map.putString("photo", null);
-                }
+                map.putString("name", "Unknown Caller");
+                map.putBoolean("isSaved", false);
             }
 
         } catch (Exception e) {
@@ -257,6 +252,7 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
         }
 
         map.putString("number", number);
+        map.putString("photo", null);
         map.putString("spam", "unknown");
 
         return map;
@@ -265,7 +261,6 @@ public class CallDetectorModule extends ReactContextBaseJavaModule {
     /* ============================================
        EVENT EMITTER
     ============================================ */
-
     private void sendEventSafe(String name, WritableMap data) {
         try {
             getReactApplicationContext()

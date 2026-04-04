@@ -1,16 +1,14 @@
 package com.airtimecoin.app;
 
-import android.app.Service;
+import android.app.*;
 import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.*;
 import android.provider.Settings;
 import android.view.*;
 import android.widget.*;
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import androidx.core.app.NotificationCompat;
 import android.util.Log;
 
@@ -34,30 +32,18 @@ public class OverlayService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
 
-        if (intent == null) return START_STICKY;
+        startForeground(1, buildNotification()); // ✅ REQUIRED
 
-        try {
-            startForeground(1, buildNotification()); // ✅ REQUIRED
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        if (intent.hasExtra("updateSpam")) {
-            updateSpamUI(intent.getStringExtra("updateSpam"));
-            return START_STICKY;
-        }
-
-        if (intent.hasExtra("stop")) {
-            stopForeground(true);
+        if (intent != null && intent.hasExtra("stop")) {
             stopSelf();
             return START_NOT_STICKY;
         }
 
         showOverlay(
-                intent.getStringExtra("name"),
-                intent.getStringExtra("number"),
-                intent.getStringExtra("photo"),
-                intent.getStringExtra("spam")
+                intent != null ? intent.getStringExtra("name") : null,
+                intent != null ? intent.getStringExtra("number") : null,
+                intent != null ? intent.getStringExtra("photo") : null,
+                intent != null ? intent.getStringExtra("spam") : null
         );
 
         return START_STICKY;
@@ -65,13 +51,17 @@ public class OverlayService extends Service {
 
     private void showOverlay(String name, String number, String photo, String spam) {
 
-        Log.d("OVERLAY_DEBUG", "🚀 showOverlay called");
-
         try {
 
-            if (!Settings.canDrawOverlays(this)) return;
-
-            if (overlayView != null) return; // ✅ prevent duplicate
+            if (!Settings.canDrawOverlays(this)) {
+                Intent intent = new Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName())
+                );
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+                return;
+            }
 
             windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
@@ -84,8 +74,8 @@ public class OverlayService extends Service {
                     WindowManager.LayoutParams.WRAP_CONTENT,
                     type,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                            | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                     PixelFormat.TRANSLUCENT
             );
 
@@ -93,9 +83,7 @@ public class OverlayService extends Service {
             params.x = 30;
             params.y = 200;
 
-            /* =========================
-               CREATE BUBBLE
-            ========================= */
+            /* ========= BUBBLE ========= */
             TextView bubble = new TextView(this);
             bubble.setText("📞");
             bubble.setTextSize(22);
@@ -109,9 +97,7 @@ public class OverlayService extends Service {
 
             overlayView = bubble;
 
-            /* =========================
-               CREATE EXPANDED VIEW
-            ========================= */
+            /* ========= EXPANDED ========= */
             expandedView = new LinearLayout(this);
             expandedView.setOrientation(LinearLayout.VERTICAL);
             expandedView.setPadding(40, 30, 40, 30);
@@ -130,7 +116,7 @@ public class OverlayService extends Service {
             numberView.setText(number != null ? number : "Unknown");
 
             spamTagView = new TextView(this);
-            updateSpamUI(spam);
+            spamTagView.setText(spam != null ? spam : "Safe");
 
             timerView = new TextView(this);
             earningsView = new TextView(this);
@@ -141,34 +127,44 @@ public class OverlayService extends Service {
             expandedView.addView(timerView);
             expandedView.addView(earningsView);
 
-            /* =========================
-               ADD VIEWS (ONLY ONCE)
-            ========================= */
-            handler.postDelayed(() -> {
-                try {
-                    if (overlayView.getParent() == null) {
-                        windowManager.addView(overlayView, params);
-                    }
-                    if (expandedView.getParent() == null) {
-                        windowManager.addView(expandedView, params);
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }, 300);
+            /* ========= ADD VIEWS ========= */
+            windowManager.addView(overlayView, params);
+            windowManager.addView(expandedView, params);
 
-            /* =========================
-               CLICK TO EXPAND
-            ========================= */
+            /* ========= DRAG SUPPORT ========= */
+            overlayView.setOnTouchListener(new View.OnTouchListener() {
+                int initialX, initialY;
+                float initialTouchX, initialTouchY;
+
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    switch (event.getAction()) {
+                        case MotionEvent.ACTION_DOWN:
+                            initialX = params.x;
+                            initialY = params.y;
+                            initialTouchX = event.getRawX();
+                            initialTouchY = event.getRawY();
+                            return true;
+
+                        case MotionEvent.ACTION_MOVE:
+                            params.x = initialX - (int) (event.getRawX() - initialTouchX);
+                            params.y = initialY + (int) (event.getRawY() - initialTouchY);
+                            windowManager.updateViewLayout(overlayView, params);
+                            windowManager.updateViewLayout(expandedView, params);
+                            return true;
+                    }
+                    return false;
+                }
+            });
+
+            /* ========= CLICK ========= */
             bubble.setOnClickListener(v -> {
                 isExpanded = !isExpanded;
                 expandedView.setVisibility(isExpanded ? View.VISIBLE : View.GONE);
                 bubble.setVisibility(isExpanded ? View.GONE : View.VISIBLE);
             });
 
-            /* =========================
-               TIMER LOOP
-            ========================= */
+            /* ========= TIMER ========= */
             handler.post(new Runnable() {
                 @Override
                 public void run() {
@@ -183,7 +179,7 @@ public class OverlayService extends Service {
             });
 
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e("OVERLAY_ERROR", e.toString());
         }
     }
 
@@ -217,23 +213,10 @@ public class OverlayService extends Service {
 
         handler.removeCallbacksAndMessages(null);
 
-        try {
-            if (windowManager != null) {
-                if (overlayView != null && overlayView.getParent() != null) {
-                    windowManager.removeView(overlayView);
-                }
-                if (expandedView != null && expandedView.getParent() != null) {
-                    windowManager.removeView(expandedView);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (windowManager != null) {
+            if (overlayView != null) windowManager.removeView(overlayView);
+            if (expandedView != null) windowManager.removeView(expandedView);
         }
-    }
-
-    private void updateSpamUI(String status) {
-        if (spamTagView == null) return;
-        spamTagView.setText(status != null ? status : "Safe");
     }
 
     @Override

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import API from "../api/api"; // ✅ use your interceptor
+import { onSocketEvent } from "../services/socket";
 
 export interface Transaction {
   id: string;
@@ -13,6 +14,9 @@ export default function useEarnings(userId: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /* =============================
+     FETCH FROM API
+  ============================= */
   const fetchEarnings = useCallback(async () => {
     if (!userId) return;
 
@@ -20,30 +24,64 @@ export default function useEarnings(userId: string) {
     setError(null);
 
     try {
-      // 👇 Use local backend in dev, live API in production
-      const baseURL =
-        process.env.NODE_ENV === "development"
-          ? "http://localhost:5000"
-          : "https://api.airtimecoin.com";
-
-      const response = await axios.get(`${baseURL}/earnings`, {
+      const res = await API.get("/api/earnings", {
         params: { user: userId },
       });
 
-      setData(response.data.transactions || []);
+      setData(res.data.transactions || []);
     } catch (err: any) {
-      console.error("Error fetching earnings:", err);
+      console.log("❌ Earnings fetch error:", err?.response?.data || err.message);
+
       setError(
-        err.response?.data?.message || "Failed to fetch earnings. Try again."
+        err?.response?.data?.message || "Failed to fetch earnings"
       );
     } finally {
       setLoading(false);
     }
   }, [userId]);
 
+  /* =============================
+     INITIAL LOAD
+  ============================= */
   useEffect(() => {
     fetchEarnings();
   }, [fetchEarnings]);
 
-  return { data, loading, error, refresh: fetchEarnings };
+  /* =============================
+     REALTIME UPDATE (🔥 IMPORTANT)
+  ============================= */
+  useEffect(() => {
+    let cleanup: any;
+
+    const init = async () => {
+      cleanup = await onSocketEvent("MINUTES_CREDIT", (payload) => {
+        if (!payload) return;
+
+        console.log("💰 Live earning:", payload);
+
+        const newTx: Transaction = {
+          id: Date.now().toString(),
+          type: "call",
+          amount: payload.amount || 0,
+          date: new Date().toISOString(),
+        };
+
+        // ✅ prepend new earning
+        setData((prev) => [newTx, ...prev]);
+      });
+    };
+
+    init();
+
+    return () => {
+      cleanup && cleanup();
+    };
+  }, []);
+
+  return {
+    data,
+    loading,
+    error,
+    refresh: fetchEarnings,
+  };
 }

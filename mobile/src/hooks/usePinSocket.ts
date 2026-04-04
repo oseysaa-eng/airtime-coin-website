@@ -1,31 +1,29 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect } from "react";
-import { io } from "socket.io-client";
+import { onSocketEvent } from "../services/socket";
 
 export const usePinSocket = (onPinUpdate: (payload: any) => void) => {
   useEffect(() => {
-    let socket: any;
-    (async () => {
-      const token = await AsyncStorage.getItem("userToken");
-      const userId = await AsyncStorage.getItem("userId");
-      if (!token || !userId) return;
+    let cleanups: (() => void)[] = [];
 
-      socket = io("http://192.168.1.217:5000", {
-        auth: { token },
-        transports: ["websocket"],
+    const init = async () => {
+      // ✅ PIN update
+      const offPin = await onSocketEvent("pin:update", (payload) => {
+        console.log("🔔 PIN Updated:", payload);
+        onPinUpdate(payload);
       });
 
-      socket.on("connect", () => {
-        socket.emit("join", userId);
+      // ✅ Withdraw update (optional)
+      const offWithdraw = await onSocketEvent("withdraw:update", (payload) => {
+        console.log("💸 Withdraw update:", payload);
       });
 
-      socket.on("pin:update", (payload: any) => onPinUpdate(payload));
-      socket.on("withdraw:update", (payload: any) => {
-        // optionally listen in screens
-        console.log("withdraw update", payload);
-      });
-    })();
+      cleanups = [offPin, offWithdraw];
+    };
 
-    return () => socket?.disconnect();
+    init();
+
+    return () => {
+      cleanups.forEach(fn => fn && fn());
+    };
   }, []);
 };
