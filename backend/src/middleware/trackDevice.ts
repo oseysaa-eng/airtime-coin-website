@@ -1,28 +1,43 @@
-import Device from "../models/Device";
+import { Request, Response, NextFunction } from "express";
 
-export const trackDevice = async (req: any, res: any, next: any) => {
+export const trackDevice = (
+  req: any,
+  _res: Response,
+  next: NextFunction
+) => {
   try {
+    // ✅ SAFE DEVICE ID (string only)
+    const rawDeviceId = req.headers["x-device-id"];
+    const deviceId =
+      typeof rawDeviceId === "string" ? rawDeviceId : null;
 
-    const device = req.body.device;
+    // ✅ REAL IP (works behind proxy like Render)
+    const forwarded = req.headers["x-forwarded-for"];
+    const ip =
+      typeof forwarded === "string"
+        ? forwarded.split(",")[0]
+        : req.socket?.remoteAddress || null;
 
-    if (!device || !req.user) return next();
+    // ✅ USER AGENT (device info)
+    const userAgent = req.headers["user-agent"] || null;
 
-    await Device.findOneAndUpdate(
-      {
-        userId: req.user.id,
-        model: device.model
-      },
-      {
-        ...device,
-        lastSeenAt: new Date()
-      },
-      { upsert: true }
-    );
+    // ✅ ATTACH TO REQUEST
+    req.device = {
+      deviceId,
+      ipAddress: ip,
+      userAgent,
+    };
 
     next();
 
   } catch (err) {
-    console.error("DEVICE TRACK ERROR", err);
+    // ❗ NEVER BLOCK REQUEST
+    req.device = {
+      deviceId: null,
+      ipAddress: null,
+      userAgent: null,
+    };
+
     next();
   }
 };

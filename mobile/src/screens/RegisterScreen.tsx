@@ -6,6 +6,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,7 +17,6 @@ import {
 import API from "../api/api";
 
 export default function RegisterScreen({ navigation }: any) {
-
   const [username, setUsername] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -28,290 +28,222 @@ export default function RegisterScreen({ navigation }: any) {
   const [errors, setErrors] = useState<any>({});
   const [loading, setLoading] = useState(false);
 
-  // ===============================
-  // VALIDATION
-  // ===============================
+  /* =============================
+     VALIDATION
+  ============================= */
   const validateForm = () => {
+    let newErrors: any = {};
 
-  let newErrors: any = {};
+    const cleanEmail = email.trim();
 
-  if (!username.trim())
-    newErrors.username = "Username required";
+    if (!username.trim()) newErrors.username = "Username required";
 
-  if (!email.trim())
-    newErrors.email = "Email required";
+    if (!cleanEmail) newErrors.email = "Email required";
+    else if (!/\S+@\S+\.\S+/.test(cleanEmail))
+      newErrors.email = "Invalid email";
 
-  else if (!/\S+@\S+\.\S+/.test(email))
-    newErrors.email = "Invalid email";
+    if (!password) newErrors.password = "Password required";
+    else if (password.length < 6)
+      newErrors.password = "Minimum 6 characters";
 
-  if (!password)
-    newErrors.password = "Password required";
+    if (!acceptTerms) newErrors.terms = "You must accept terms";
 
-  else if (password.length < 6)
-    newErrors.password = "Minimum 6 characters";
+    setErrors(newErrors);
 
-  if (!acceptTerms)
-    newErrors.terms = "Accept Terms required";
+    return Object.keys(newErrors).length === 0;
+  };
 
-  setErrors(newErrors);
+  /* =============================
+     REGISTER
+  ============================= */
+  const handleRegister = async () => {
+    if (loading) return;
 
-  return Object.keys(newErrors).length === 0;
-};
+    Keyboard.dismiss();
 
+    if (!validateForm()) return;
 
-  // ===============================
-  // REGISTER
-  // ===============================
+    try {
+      setLoading(true);
 
-const handleRegister = async () => {
-  Keyboard.dismiss();
+      const res = await API.post("/api/auth/register", {
+        email: email.trim().toLowerCase(),
+        password,
+        name: username.trim(),
+        fullName: fullName.trim(),
+        referralCode: referralCode
+          ? referralCode.trim().toUpperCase()
+          : undefined,
+      });
 
-  if (!validateForm()) return;
+      if (!res?.data?.token) {
+        throw new Error("Registration failed");
+      }
 
-  try {
-    setLoading(true);
+      Alert.alert("Success 🎉", "Account created successfully!");
 
-    const res = await API.post("/api/auth/register", {
-  email: email.trim().toLowerCase(),
-  password,
-  name: username.trim(),
-  fullName: fullName.trim(),
-  referralCode: referralCode
-    ? referralCode.trim().toUpperCase()
-    : null,
-});
+      navigation.replace("Login");
 
-    
+    } catch (err: any) {
+      console.log("REGISTER ERROR:", err);
 
-    if (!res?.data?.token) {
-      throw new Error("Registration failed");
+      if (!err.response) {
+        Alert.alert("Network Error", "Check your internet connection");
+      } else {
+        Alert.alert(
+          "Registration Failed",
+          err?.response?.data?.message ||
+            err?.message ||
+            "Unable to create account"
+        );
+      }
+    } finally {
+      setLoading(false);
     }
+  };
 
-    Alert.alert(
-      "Success 🎉",
-      "Account created successfully!"
-    );
-
-    navigation.replace("Login");
-
-  } catch (err: any) {
-
-    console.log("REGISTER ERROR:", err?.response?.data);
-
-    Alert.alert(
-      "Registration Failed",
-      err?.response?.data?.message ||
-      err?.response?.data?.msg ||
-      err?.message ||
-      "Unable to create account"
-    );
-
-  } finally {
-    setLoading(false);
-  }
-};
-
-
-
-  // ===============================
-  // UI
-  // ===============================
+  /* =============================
+     UI
+  ============================= */
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.container}
       >
-        <View style={styles.card}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={styles.card}>
 
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>
-            Join Airtime Coin today 🚀
-          </Text>
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.subtitle}>
+              Join Airtime Coin 🚀
+            </Text>
 
-          {/* Username */}
-          <Text style={styles.label}>Username</Text>
-          <TextInput
-            placeholder="Enter username"
-            placeholderTextColor="#94a3b8"
-            style={[
-              styles.input,
-              errors.username && styles.errorInput
-            ]}
-            value={username}
-            onChangeText={setUsername}
-          />
-          {errors.username && (
-            <Text style={styles.error}>{errors.username}</Text>
-          )}
-
-          {/* Full Name */}
-          <Text style={styles.label}>Full Name</Text>
-          <TextInput
-            placeholder="Enter your full name"
-            placeholderTextColor="#94a3b8"
-            style={styles.input}
-            value={fullName}
-            onChangeText={setFullName}
-          />
-
-          {/* Email */}
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            placeholder="example@gmail.com"
-            placeholderTextColor="#94a3b8"
-            style={[
-              styles.input,
-              errors.email && styles.errorInput
-            ]}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-          />
-          {errors.email && (
-            <Text style={styles.error}>{errors.email}</Text>
-          )}
-
-          {/* Password */}
-          <Text style={styles.label}>Password</Text>
-          <View style={[
-            styles.passwordWrap,
-            errors.password && styles.errorInput
-          ]}>
+            {/* USERNAME */}
+            <Text style={styles.label}>Username</Text>
             <TextInput
-              placeholder="Create a strong password"
-              placeholderTextColor="#94a3b8"
-              style={styles.passwordInput}
-              secureTextEntry={!showPassword}
-              value={password}
-              onChangeText={setPassword}
+              placeholder="Enter username"
+              style={[styles.input, errors.username && styles.errorInput]}
+              value={username}
+              onChangeText={setUsername}
+            />
+            {errors.username && <Text style={styles.error}>{errors.username}</Text>}
+
+            {/* FULL NAME */}
+            <Text style={styles.label}>Full Name</Text>
+            <TextInput
+              placeholder="Enter full name"
+              style={styles.input}
+              value={fullName}
+              onChangeText={setFullName}
             />
 
-            <TouchableOpacity
-              onPress={() => setShowPassword(!showPassword)}
-            >
-              <Feather
-                name={showPassword ? "eye" : "eye-off"}
-                size={20}
-                color="#64748b"
-              />
-            </TouchableOpacity>
-          </View>
-          {errors.password && (
-            <Text style={styles.error}>{errors.password}</Text>
-          )}
-
-          {/* Referral Code */}
-          <Text style={styles.label}>Referral Code (Optional)</Text>
-
+            {/* EMAIL */}
+            <Text style={styles.label}>Email</Text>
             <TextInput
-              placeholder="Enter your invite code"
-              placeholderTextColor="#94a3b8"
-              style={[
-                styles.input,
-                errors.referralCode && styles.errorInput
-              ]}
+              placeholder="example@gmail.com"
+              style={[styles.input, errors.email && styles.errorInput]}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={setEmail}
+            />
+            {errors.email && <Text style={styles.error}>{errors.email}</Text>}
+
+            {/* PASSWORD */}
+            <Text style={styles.label}>Password</Text>
+            <View style={[styles.passwordWrap, errors.password && styles.errorInput]}>
+              <TextInput
+                placeholder="Minimum 6 characters"
+                style={styles.passwordInput}
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={setPassword}
+              />
+
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                <Feather name={showPassword ? "eye" : "eye-off"} size={20} />
+              </TouchableOpacity>
+            </View>
+            {errors.password && <Text style={styles.error}>{errors.password}</Text>}
+
+            {/* REFERRAL */}
+            <Text style={styles.label}>Referral Code (Optional)</Text>
+            <TextInput
+              placeholder="Enter referral code"
+              style={styles.input}
               value={referralCode}
               onChangeText={setReferralCode}
-              autoCapitalize="none"
             />
 
-            {errors.referralCode && (
-              <Text style={styles.error}>
-                {errors.referralCode}
+            {/* TERMS */}
+            <TouchableOpacity
+              style={styles.termsRow}
+              onPress={() => setAcceptTerms(!acceptTerms)}
+            >
+              <View style={[styles.checkbox, acceptTerms && styles.checked]}>
+                {acceptTerms && <Feather name="check" size={14} color="#fff" />}
+              </View>
+
+              <Text style={styles.termsText}>
+                I agree to the{" "}
+                <Text style={styles.linkText}>Terms</Text> &{" "}
+                <Text style={styles.linkText}>Privacy Policy</Text>
               </Text>
-            )}
-  
-        
-          {/* TERMS */}
-          <TouchableOpacity
-            style={styles.termsRow}
-            onPress={() => setAcceptTerms(!acceptTerms)}
-            activeOpacity={0.7}
-          >
-            <View style={[
-              styles.checkbox,
-              acceptTerms && styles.checked
-            ]}>
-              {acceptTerms && (
-                <Feather
-                  name="check"
-                  size={14}
-                  color="#fff"
-                />
+            </TouchableOpacity>
+
+            {errors.terms && <Text style={styles.error}>{errors.terms}</Text>}
+
+            {/* BUTTON */}
+            <TouchableOpacity
+              style={[
+                styles.btn,
+                (loading || !acceptTerms) && styles.disabledBtn,
+              ]}
+              onPress={handleRegister}
+              disabled={loading || !acceptTerms}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.btnText}>Create Account</Text>
               )}
-            </View>
+            </TouchableOpacity>
 
-            <Text style={styles.termsText}>
-              I agree to the{" "}
-              <Text style={styles.termsLink}>
-                Terms
-              </Text>{" "}
-              &{" "}
-              <Text style={styles.termsLink}>
-                Privacy Policy
+            {/* LOGIN */}
+            <TouchableOpacity onPress={() => navigation.replace("Login")}>
+              <Text style={styles.loginLink}>
+                Already have an account? Login
               </Text>
-            </Text>
-          </TouchableOpacity>
+            </TouchableOpacity>
 
-          {errors.terms && (
-            <Text style={styles.error}>{errors.terms}</Text>
-          )}
-
-          {/* CREATE ACCOUNT BUTTON */}
-          <TouchableOpacity
-            style={[
-              styles.btn,
-              (loading || !acceptTerms) && styles.disabledBtn
-            ]}
-            onPress={handleRegister}
-            disabled={loading || !acceptTerms}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.btnText}>
-                Create Account
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          {/* LOGIN LINK */}
-          <TouchableOpacity
-            onPress={() => navigation.replace("Login")}
-          >
-            <Text style={styles.link}>
-              Already have an account? Login
-            </Text>
-          </TouchableOpacity>
-
-        </View>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );
 }
 
-/* ===============================
-   STYLES
-================================ */
+/* =============================
+   STYLES (MODERN)
+============================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#020617",
     justifyContent: "center",
-    padding: 24,
+    padding: 20,
   },
 
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 22,
+    backgroundColor: "#ffffff",
+    borderRadius: 24,
     padding: 24,
-    elevation: 6,
+    elevation: 8,
   },
 
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "800",
     textAlign: "center",
     color: "#0f172a",
@@ -320,23 +252,22 @@ const styles = StyleSheet.create({
   subtitle: {
     textAlign: "center",
     color: "#64748b",
-    marginBottom: 28,
+    marginBottom: 24,
   },
 
   label: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#334155",
     marginBottom: 4,
-    marginLeft: 2,
+    color: "#334155",
   },
 
   input: {
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
     borderRadius: 14,
     padding: 14,
+    backgroundColor: "#f8fafc",
     marginBottom: 10,
   },
 
@@ -345,9 +276,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
     borderRadius: 14,
     paddingHorizontal: 14,
+    backgroundColor: "#f8fafc",
     marginBottom: 10,
   },
 
@@ -363,26 +294,24 @@ const styles = StyleSheet.create({
   error: {
     color: "#ef4444",
     fontSize: 12,
-    marginBottom: 8,
-    marginLeft: 4,
+    marginBottom: 6,
   },
 
   termsRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
-    marginBottom: 8,
+    marginVertical: 10,
   },
 
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
+    width: 20,
+    height: 20,
     borderWidth: 1,
     borderColor: "#94a3b8",
+    borderRadius: 6,
     marginRight: 10,
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "center",
   },
 
   checked: {
@@ -391,21 +320,21 @@ const styles = StyleSheet.create({
   },
 
   termsText: {
+    flex: 1,
     fontSize: 13,
     color: "#334155",
-    flex: 1,
   },
 
-  termsLink: {
+  linkText: {
     color: "#0ea5a4",
     fontWeight: "600",
   },
 
   btn: {
     backgroundColor: "#0ea5a4",
-    borderRadius: 16,
     paddingVertical: 16,
-    marginTop: 12,
+    borderRadius: 16,
+    marginTop: 10,
   },
 
   disabledBtn: {
@@ -414,12 +343,12 @@ const styles = StyleSheet.create({
 
   btnText: {
     color: "#fff",
-    fontWeight: "700",
     textAlign: "center",
+    fontWeight: "700",
     fontSize: 16,
   },
 
-  link: {
+  loginLink: {
     textAlign: "center",
     marginTop: 20,
     color: "#0ea5a4",
