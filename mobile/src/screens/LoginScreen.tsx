@@ -18,6 +18,7 @@ import {
 import API from "../api/api";
 import { getDeviceFingerprint } from "../utils/deviceFingerprint";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { connectSocket } from "../services/socket";
 
 
 
@@ -68,6 +69,7 @@ export default function LoginScreen({ navigation }: any) {
   // ===============================
   // EMAIL LOGIN (PRIMARY)
   // ===============================
+
 const handleLogin = async () => {
   if (!validate()) return;
 
@@ -78,31 +80,38 @@ const handleLogin = async () => {
 
   try {
     setLoading(true);
- const device = getDeviceFingerprint();
+
     const res = await API.post("/api/auth/login", {
       email,
       password,
       fingerprint,
-      device,
     });
 
     if (!res.data?.token) {
       throw new Error("Invalid login response");
     }
 
-    // ✅ Save using SAME key API expects
-    await AsyncStorage.setItem("userToken", res.data.token);
-    await AsyncStorage.setItem("userId", res.data.user._id);
+    const { token, refreshToken, user } = res.data;
 
-    navigation.replace("AppDrawer");
+    // ✅ USE CORRECT KEYS (VERY IMPORTANT)
+    await AsyncStorage.setItem("userToken", token);
+    await AsyncStorage.setItem("refreshToken", refreshToken);
+    await AsyncStorage.setItem("userId", user._id);
+    await AsyncStorage.setItem("hasAccount", "true");
+
+    // 🔌 CONNECT SOCKET (auto joins inside)
+    await connectSocket();
+
+    console.log("✅ Login + Socket connected");
+
+    // 🚀 Navigate
+    navigation.replace("MainTabs");
 
   } catch (err: any) {
-
     Alert.alert(
       "Login Failed",
       err?.response?.data?.message || "Invalid credentials"
     );
-
   } finally {
     setLoading(false);
   }
@@ -111,16 +120,26 @@ const handleLogin = async () => {
   // ===============================
   // BIOMETRIC LOGIN (TOKEN ONLY)
   // ===============================
-  const handleBiometricAuth = async () => {
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: "Authenticate",
-    });
+const handleBiometricAuth = async () => {
+  const result = await LocalAuthentication.authenticateAsync({
+    promptMessage: "Authenticate",
+  });
 
-    if (!result.success) return;
+  if (!result.success) return;
 
-    // 🔐 biometric only unlocks stored token
-    navigation.replace("AppDrawer");
-  };
+  const token = await AsyncStorage.getItem("userToken");
+
+  if (!token) {
+    Alert.alert("Session expired", "Please login again");
+    return;
+  }
+
+  // 🔌 reconnect socket on biometric login
+  await connectSocket();
+
+  navigation.replace("AppDrawer");
+};
+
 
   return (
     <KeyboardAvoidingView
@@ -176,6 +195,7 @@ const handleLogin = async () => {
           <Text style={theme.errorText}>{passwordError}</Text>
         ) : null}
 
+
         <TouchableOpacity
           style={[theme.loginButton, loading && { opacity: 0.6 }]}
           onPress={handleLogin}
@@ -197,6 +217,11 @@ const handleLogin = async () => {
             <Text style={theme.biometricText}>Login with Biometrics</Text>
           </TouchableOpacity>
         )}
+
+            <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+          <Text>Don't have an account? Register</Text>
+        </TouchableOpacity>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );

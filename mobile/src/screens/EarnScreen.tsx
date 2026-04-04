@@ -39,6 +39,7 @@ export default function EarnScreen() {
 
   const [cooldown, setCooldown] = useState(0);
   const cooldownRef = useRef<NodeJS.Timeout | null>(null);
+  const rewardGivenRef = useRef(false);
 
   /* UNIQUE REWARD ID */
 
@@ -46,34 +47,37 @@ export default function EarnScreen() {
     `ad_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
   /* AD EVENTS */
+useEffect(() => {
+  const unsubscribe = rewarded.addAdEventsListener((event) => {
+    switch (event.type) {
+      case RewardedAdEventType.LOADED:
+        setRewardedReady(true);
+        break;
 
-  useEffect(() => {
-    const unsubscribe = rewarded.addAdEventsListener((event) => {
-      switch (event.type) {
-        case RewardedAdEventType.LOADED:
-          setRewardedReady(true);
-          break;
-
-        case RewardedAdEventType.EARNED_REWARD:
+      case RewardedAdEventType.EARNED_REWARD:
+        if (!rewardGivenRef.current) {
+          rewardGivenRef.current = true;
           claimAdReward();
-          break;
+        }
+        break;
 
-        case RewardedAdEventType.CLOSED:
-          rewarded.load();
-          setRewardedReady(false);
-          break;
+      case RewardedAdEventType.CLOSED:
+        rewarded.load();
+        setRewardedReady(false);
+        rewardGivenRef.current = false;
+        break;
 
-        case RewardedAdEventType.ERROR:
-          console.log("Ad error:", event.error);
-          break;
-      }
-    });
+      case RewardedAdEventType.ERROR:
+        console.log("Ad error:", event.error);
+        break;
+    }
+  });
 
-    rewarded.load();
-    fetchReferral();
+  rewarded.load();
+  fetchReferral();
 
-    return unsubscribe;
-  }, []);
+  return () => unsubscribe();
+}, []);
 
   /* COOLDOWN TIMER */
 
@@ -97,21 +101,15 @@ export default function EarnScreen() {
 
   /* CLAIM AD REWARD */
 const claimAdReward = async () => {
-
   try {
-
     setLoading(true);
 
     const res = await API.post("/api/ads/complete", {
       adRewardId: generateAdRewardId(),
       network: "ADMOB",
-      rewardMinutes: 5,
-      signature: "SIGNED_PAYLOAD"
     });
 
-    if (!res.data.success) {
-      throw new Error("Reward rejected");
-    }
+    if (!res.data.success) throw new Error("Rejected");
 
     Alert.alert(
       "Reward Earned 🎉",
@@ -119,34 +117,23 @@ const claimAdReward = async () => {
     );
 
     emitDashboardUpdate();
-
     setCooldown(60);
 
   } catch (err: any) {
-
-    console.log("Ad reward error:", err?.response?.data);
-
     Alert.alert(
       "Reward Failed",
       err?.response?.data?.message || "Unable to credit reward"
     );
-
   } finally {
-
     setLoading(false);
-
   }
-
 };
-
   /* WATCH AD */
-  const watchAd = () => {
+const watchAd = () => {
+  if (loading) return;
 
   if (cooldown > 0) {
-    Alert.alert(
-      "Please wait",
-      `Next ad available in ${cooldown} seconds`
-    );
+    Alert.alert("Please wait", `Next ad in ${cooldown}s`);
     return;
   }
 
@@ -156,7 +143,6 @@ const claimAdReward = async () => {
   }
 
   rewarded.show();
-
 };
 
   /* REFERRAL */

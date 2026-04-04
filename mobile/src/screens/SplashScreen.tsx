@@ -1,17 +1,8 @@
-import * as Splash from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React from "react";
 import { Image, StyleSheet, View } from "react-native";
 import * as Animatable from "react-native-animatable";
 
 export default function SplashScreen() {
-  useEffect(() => {
-    const hide = async () => {
-      await new Promise(r => setTimeout(r, 1200));
-      await Splash.hideAsync();
-    };
-    hide();
-  }, []);
-
   return (
     <View style={styles.container}>
       <Animatable.View
@@ -30,6 +21,22 @@ export default function SplashScreen() {
             style={styles.logo}
           />
         </View>
+
+        <Animatable.Text
+          animation="fadeInUp"
+          delay={300}
+          style={styles.title}
+        >
+          Airtime Coin
+        </Animatable.Text>
+
+        <Animatable.Text
+          animation="pulse"
+          iterationCount="infinite"
+          style={styles.subtitle}
+        >
+          Securing your session...
+        </Animatable.Text>
       </Animatable.View>
     </View>
   );
@@ -44,17 +51,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
   glow: {
     width: SIZE + 20,
     height: SIZE + 20,
     borderRadius: (SIZE + 20) / 2,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#c5c5c5ff",
+    shadowColor: "#c5c5c5",
     shadowOpacity: 0.9,
     shadowRadius: 20,
     elevation: 25,
   },
+
   logoWrapper: {
     width: SIZE,
     height: SIZE,
@@ -65,9 +74,22 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#ffffff",
   },
+
   logo: {
     width: SIZE * 0.6,
     height: SIZE * 0.6,
     tintColor: "#ffffff",
+  },
+
+  title: {
+    marginTop: 20,
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0ea5a4",
+  },
+
+  subtitle: {
+    marginTop: 10,
+    color: "#64748b",
   },
 });

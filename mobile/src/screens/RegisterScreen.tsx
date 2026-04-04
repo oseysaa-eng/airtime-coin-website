@@ -80,6 +80,7 @@ const handleRegister = async () => {
     ? referralCode.trim().toUpperCase()
     : null,
 });
+
     
 
     if (!res?.data?.token) {

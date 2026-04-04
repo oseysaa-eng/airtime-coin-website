@@ -2,8 +2,7 @@ import { Buffer } from "buffer";global.Buffer = Buffer;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import * as ExpoSplash from "expo-splash-screen";
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Provider as PaperProvider } from 'react-native-paper';
@@ -11,16 +10,19 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KYCProvider } from './src/context/KYCContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { WalletProvider } from './src/context/WalletContext';
-import { initializeI18n } from './src/i18n/index';
 import { registerForPushNotificationsAsync } from "./src/services/pushClient";
 import { connectSocket, joinUserRoom, onMinutesCredit } from "./src/services/realtime";
 import { useUserStore } from "./src/store/useUserStore";
 import { checkEmulator } from "./src/utils/securityCheck";
+import * as Notifications from "expo-notifications";
+import { useRef } from "react";
 import { initCallMining } from "./src/services/callDetector";
+import { useAppBootstrap } from "./src/hooks/useAppBootstrap";
+import * as SplashScreen from "expo-splash-screen";
 
 
 
-ExpoSplash.preventAutoHideAsync(); // ONCE, at top level
+
 
 
 
@@ -68,7 +70,7 @@ import AppInfoScreen from './src/screens/settings/AppInfoScreen';
 import PrivacyScreen from './src/screens/settings/PrivacyScreen';
 
 import SupportChatScreen from './src/screens/settings/SupportChatScreen';
-import SplashScreen from './src/screens/SplashScreen';
+import SplashScreenComponent from './src/screens/SplashScreen';
 import SurveyScreen from './src/screens/SurveyScreen';
 import ThemeScreen from './src/screens/ThemeScreen';
 import UtilityHistoryScreen from "./src/screens/UtilityHistoryScreen";
@@ -77,183 +79,169 @@ import WithdrawHistoryScreen from './src/screens/WithdrawHistoryScreen';
 import WithdrawPinScreen from './src/screens/WithdrawPinScreen';
 import WithdrawScreen from './src/screens/WithdrawScreen';
 import WithdrawSuccessScreen from './src/screens/WithdrawSuccessScreen';
-
-
-
-
 import { default as AppDrawer, default as DrawerNavigator } from './src/navigation/DrawerNavigator';
+
+
+
 
 const Stack = createNativeStackNavigator();
 
+
+/* ================= ROOT NAV ================= */
 function RootNavigator() {
   const { paperTheme, navigationTheme } = useTheme();
 
-  const [isReady, setIsReady] = useState(false);
-  const [isSplashing, setIsSplashing] = useState(true);
-  const [hasOnboarded, setHasOnboarded] = useState(false);
-  const [isLanguageSelected, setIsLanguageSelected] = useState(false);
-  const [showAppSplash, setShowAppSplash] = useState(true);
+  // ✅ USE ONLY THIS
+  const { initialRoute, ready } = useAppBootstrap();
 
-
-useEffect(() => {
-  const init = async () => {
-    // simulate app init
-    await new Promise(r => setTimeout(r, 1500));
-
-    const selectedLang = await AsyncStorage.getItem("selectedLanguage");
-    setIsLanguageSelected(!!selectedLang);
-
-    const onboarded = await AsyncStorage.getItem("hasOnboarded");
-    setHasOnboarded(onboarded === "true");
-
-    await initializeI18n();
-
-    // 🔑 Hide native splash FIRST
-    await ExpoSplash.hideAsync();
-
-    // 🔑 Show animated splash briefly
-    setTimeout(() => {
-      setShowAppSplash(false);
-      setIsReady(true);
-    }, 1200);
-  };
-
-  init();
-}, []);
-
-
-useEffect(() => {
-  checkEmulator();
-}, []);
-
-
+  // ✅ Hide splash when ready
   useEffect(() => {
-    const init = async () => {
-      await new Promise(r => setTimeout(r, 1500));
+    if (ready) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [ready]);
 
-      const selectedLang = await AsyncStorage.getItem("selectedLanguage");
-      setIsLanguageSelected(!!selectedLang);
-
-      await initializeI18n();
-
-      const onboarded = await AsyncStorage.getItem("hasOnboarded");
-      setHasOnboarded(onboarded === "true");
-
-      setIsSplashing(false);
-      setIsReady(true);
-    };
-
-    init();
-  }, []);
-
-  if (!isReady || isSplashing) {
-    return <SplashScreen />;
-  }
+  // ✅ Show animated splash while loading
+  if (!ready) return <SplashScreenComponent />;
 
   return (
-        <SafeAreaProvider>
-    <GestureHandlerRootView style={{ flex: 1 }}>
-    <PaperProvider theme={paperTheme}>
-      <NavigationContainer theme={navigationTheme}>
-        <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={
-          !isLanguageSelected ? "Language"
-            : !hasOnboarded ? "Onboarding"
-            : "Register"
-        }>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <PaperProvider theme={paperTheme}>
+          <NavigationContainer theme={navigationTheme}>
+            <Stack.Navigator
+              screenOptions={{ headerShown: false }}
+              initialRouteName={initialRoute}
+            >
+              {/* Auth & Core */}
+              <Stack.Screen name="Language" component={LanguageScreen} />
+              <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+              <Stack.Screen name="Register" component={RegisterScreen} />
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="OtpVerification" component={OtpVerificationScreen} />
 
-          {/* Auth & Core */}
-          <Stack.Screen name="Language" component={LanguageScreen} />
-          <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-          <Stack.Screen name="Register" component={RegisterScreen} />
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="OtpVerification" component={OtpVerificationScreen} />
+              {/* Main */}
+              <Stack.Screen name="MainTabs" component={DrawerNavigator} />
 
-          {/* Main */}
-          <Stack.Screen name="MainTabs" component={DrawerNavigator} />
+              {/* KYC */}
+              <Stack.Screen name="KYC" component={KYCScreen} />
+              <Stack.Screen name="KYCStatus" component={KYCStatusScreen} />
+              <Stack.Screen name="WithdrawalPin" component={WithdrawalPinScreen} />
 
-          {/* KYC */}
-          <Stack.Screen name="KYC" component={KYCScreen} />
-          <Stack.Screen name="KYCStatus" component={KYCStatusScreen} />
-          <Stack.Screen name="WithdrawalPin" component={WithdrawalPinScreen} />
+              {/* Withdraw */}
+              <Stack.Screen name="Withdraw" component={WithdrawScreen} />
+              <Stack.Screen name="WithdrawPin" component={WithdrawPinScreen} />
+              <Stack.Screen name="WithdrawSuccess" component={WithdrawSuccessScreen} />
+              <Stack.Screen name="WithdrawHistory" component={WithdrawHistoryScreen} />
 
-          {/* Withdraw */}
-          <Stack.Screen name="Withdraw" component={WithdrawScreen} />
-          <Stack.Screen name="WithdrawPin" component={WithdrawPinScreen} />
-          <Stack.Screen name="WithdrawSuccess" component={WithdrawSuccessScreen} />
-          <Stack.Screen name="WithdrawHistory" component={WithdrawHistoryScreen} />
+              {/* Convert */}
+              <Stack.Screen name="Convert" component={ConvertScreen} />
+              <Stack.Screen name="ConvertHistory" component={ConvertHistoryScreen} />
 
-          {/* Convert */}
-          <Stack.Screen name="Convert" component={ConvertScreen} />
-          <Stack.Screen name="ConvertHistory" component={ConvertHistoryScreen} />
-
-          {/* Other */}
-          <Stack.Screen name="Earn" component={EarnScreen} />
-          <Stack.Screen name="Donate" component={DonateScreen} />
-          <Stack.Screen name="Survey" component={SurveyScreen} />
-          <Stack.Screen name="Invite" component={InviteScreen} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
-          <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-          <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
-          <Stack.Screen name="ManageWallets" component={ManageWalletsScreen} />
-          <Stack.Screen name="BiometricLoginScreen" component={BiometricLoginScreen} />
-          <Stack.Screen name="Notifications" component={NotificationsScreen} />
-          <Stack.Screen name="Theme" component={ThemeScreen} />
-          <Stack.Screen name="Terms" component={TermsScreen} />
-          <Stack.Screen name="Support" component={SupportScreen} />
-          <Stack.Screen name="About" component={AboutScreen} />
-          <Stack.Screen name="Privacy" component={PrivacyScreen} />
-          <Stack.Screen name="Logout" component={LogoutScreen} />
-          <Stack.Screen name="Preference" component={PreferenceScreen} />
-          <Stack.Screen name="EmailVerification" component={EmailVerificationScreen} />
-          <Stack.Screen name="AppDrawer" component={AppDrawer} />
-          <Stack.Screen name="KycCaptureID" component={KycCaptureIDScreen} />
-          <Stack.Screen name="KycCaptureSelfie" component={KycCaptureSelfieScreen} /> 
-          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-          <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
-          <Stack.Screen name="CallSession" component={CallSessionScreen} />
-          <Stack.Screen name="BuyUtility" component={BuyUtilityScreen} />
-          <Stack.Screen name="ConvertSuccess" component={ConvertSuccessScreen} />
-          <Stack.Screen name="UtilityHistory" component={UtilityHistoryScreen}/>
-          <Stack.Screen name="KycCamera" component={KycCameraScreen}options={{ headerShown: false }}/>
-          <Stack.Screen name="UtilitySuccess" component={UtilitySuccessScreen}/>
-          <Stack.Screen name="ATCPrice" component={ATCPriceScreen}/>
-          <Stack.Screen name="SetPin" component={SetPinScreen} />
-          <Stack.Screen name="ConfirmPin" component={ConfirmPinScreen} />
-          <Stack.Screen name="AppInfo" component={AppInfoScreen} />
-          <Stack.Screen name="Devices"component={DeviceManagerScreen}/>
-           <Stack.Screen name="SupportChat"component={SupportChatScreen}/>
-        </Stack.Navigator>
-      </NavigationContainer>
-    </PaperProvider>
-   </GestureHandlerRootView>
+              {/* Other */}
+              <Stack.Screen name="Earn" component={EarnScreen} />
+              <Stack.Screen name="Donate" component={DonateScreen} />
+              <Stack.Screen name="Survey" component={SurveyScreen} />
+              <Stack.Screen name="Invite" component={InviteScreen} />
+              <Stack.Screen name="Settings" component={SettingsScreen} />
+              <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+              <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+              <Stack.Screen name="ManageWallets" component={ManageWalletsScreen} />
+              <Stack.Screen name="BiometricLoginScreen" component={BiometricLoginScreen} />
+              <Stack.Screen name="Notifications" component={NotificationsScreen} />
+              <Stack.Screen name="Theme" component={ThemeScreen} />
+              <Stack.Screen name="Terms" component={TermsScreen} />
+              <Stack.Screen name="Support" component={SupportScreen} />
+              <Stack.Screen name="About" component={AboutScreen} />
+              <Stack.Screen name="Privacy" component={PrivacyScreen} />
+              <Stack.Screen name="Logout" component={LogoutScreen} />
+              <Stack.Screen name="Preference" component={PreferenceScreen} />
+              <Stack.Screen name="EmailVerification" component={EmailVerificationScreen} />
+              <Stack.Screen name="AppDrawer" component={AppDrawer} />
+              <Stack.Screen name="KycCaptureID" component={KycCaptureIDScreen} />
+              <Stack.Screen name="KycCaptureSelfie" component={KycCaptureSelfieScreen} />
+              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+              <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+              <Stack.Screen name="CallSession" component={CallSessionScreen} />
+              <Stack.Screen name="BuyUtility" component={BuyUtilityScreen} />
+              <Stack.Screen name="ConvertSuccess" component={ConvertSuccessScreen} />
+              <Stack.Screen name="UtilityHistory" component={UtilityHistoryScreen} />
+              <Stack.Screen name="KycCamera" component={KycCameraScreen} />
+              <Stack.Screen name="UtilitySuccess" component={UtilitySuccessScreen} />
+              <Stack.Screen name="ATCPrice" component={ATCPriceScreen} />
+              <Stack.Screen name="SetPin" component={SetPinScreen} />
+              <Stack.Screen name="ConfirmPin" component={ConfirmPinScreen} />
+              <Stack.Screen name="AppInfo" component={AppInfoScreen} />
+              <Stack.Screen name="Devices" component={DeviceManagerScreen} />
+              <Stack.Screen name="SupportChat" component={SupportChatScreen} />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </PaperProvider>
+      </GestureHandlerRootView>
     </SafeAreaProvider>
-    
   );
 }
 
-// ---------------- BOOTSTRAP COMPONENT ----------------
 
+
+// ---------------- BOOTSTRAP COMPONENT ----------------
 function AppBootstrap() {
   const { setUser, fetchKyc, fetchPin, listenSocket } = useUserStore();
+  const miningStarted = useRef(false);
 
+  /* 🔥 CORE BOOTSTRAP */
   useEffect(() => {
     const bootstrapRealtime = async () => {
+      const token = await AsyncStorage.getItem("userToken");
       const id = await AsyncStorage.getItem("userId");
 
-      if (id) {
-        setUser(id);
+      // ✅ BLOCK if not logged in
+      if (!token || !id) {
+        console.log("⚠️ No session → skip bootstrap");
+        return;
+      }
 
+      setUser(id);
+
+      try {
         await fetchKyc();
         await fetchPin();
+      } catch (e) {
+        console.log("⚠️ Bootstrap fetch skipped");
+      }
 
-        listenSocket();
+      try {
+        // ✅ FIX: no URL param
+        await connectSocket();
+
+        // ❌ REMOVE THIS (handled inside socket)
+        // joinUserRoom(id);
+
+        // ✅ ONE SOURCE OF TRUTH
+        const cleanup = await listenSocket();
+
+        return cleanup;
+      } catch (err) {
+        console.log("❌ Socket bootstrap failed");
       }
     };
 
-    bootstrapRealtime();
+    let cleanup: any;
+
+    bootstrapRealtime().then((fn) => {
+      cleanup = fn;
+    });
+
+    return () => {
+      cleanup && cleanup();
+    };
   }, []);
 
+  /* 🔔 PUSH NOTIFICATIONS */
   useEffect(() => {
+    let sub1: any;
+    let sub2: any;
+
     (async () => {
       await registerForPushNotificationsAsync();
 
@@ -261,59 +249,51 @@ function AppBootstrap() {
         handleNotification: async () => ({
           shouldShowAlert: true,
           shouldPlaySound: false,
-          shouldSetBadge: false
+          shouldSetBadge: false,
         }),
       });
 
-      Notifications.addNotificationReceivedListener(notification => {
-        console.log("Notification received", notification);
+      sub1 = Notifications.addNotificationReceivedListener((notification) => {
+        if (__DEV__) {
+          console.log("Notification received", notification);
+        }
       });
 
-      Notifications.addNotificationResponseReceivedListener(response => {
-        console.log("Notification tapped", response);
+      sub2 = Notifications.addNotificationResponseReceivedListener((response) => {
+        if (__DEV__) {
+          console.log("Notification tapped", response);
+        }
       });
     })();
+
+    return () => {
+      sub1?.remove();
+      sub2?.remove();
+    };
   }, []);
 
-  useEffect(()=> {
-  (async ()=>{
-    const uid = await AsyncStorage.getItem("userId");
-    connectSocket("https://atc-backend-cn4f.onrender.com");
-    if(uid) joinUserRoom(uid);
-    onMinutesCredit(p => console.log("Realtime credit", p));
-  })();
-}, []);
-
-const miningStarted = useRef(false)
-
-useEffect(() => {
-  const start = async () => {
+  /* 📞 CALL MINING */
+  useEffect(() => {
     if (miningStarted.current) return;
 
-    const uid = await AsyncStorage.getItem("userId");
+    miningStarted.current = true;
 
-    // 🔥 WAIT FOR SOCKET
-    connectSocket("https://atc-backend-cn4f.onrender.com");
+    initCallMining(
+      () => {
+        if (__DEV__) console.log("CALL START UI");
+      },
+      () => {
+        if (__DEV__) console.log("CALL END UI");
+      }
+    );
+  }, []);
 
-    setTimeout(() => {
-      if (miningStarted.current) return;
+  /* 🛡 SECURITY */
+  useEffect(() => {
+    checkEmulator();
+  }, []);
 
-      miningStarted.current = true;
-
-      console.log("🚀 Starting Call Mining AFTER socket ready");
-
-      initCallMining(
-        () => console.log("CALL START UI"),
-        () => console.log("CALL END UI")
-      );
-
-    }, 1500); // give socket time to connect
-  };
-
-  start();
-}, []);
-
-  return null; // No UI needed
+  return null;
 }
 export default function App() {
   return (
