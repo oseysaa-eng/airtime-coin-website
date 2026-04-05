@@ -96,9 +96,10 @@ export const initCallMining = (onStart?: any, onEnd?: any) => {
 
       if (socket?.connected) {
         socket.emit("call_start", {
-          sessionId: activeSessionId,
-          number,
-        });
+        sessionId: activeSessionId,
+        number,
+        timestamp: Date.now(),
+      });
 
         console.log("🚀 call_start sent");
       } else {
@@ -111,61 +112,64 @@ export const initCallMining = (onStart?: any, onEnd?: any) => {
     onStart && onStart(data);
   });
 
+  
+
   /* =============================
      CALL END
   ============================= */
   const endSub = emitter.addListener("CALL_ENDED", async (data = {}) => {
-    console.log("📞 CALL END");
+  console.log("📞 CALL END");
 
-    const duration = data?.duration || 0;
+  const duration = data?.duration || 0;
 
-    if (!activeSessionId) {
-      console.log("⚠️ No active session → ignored");
-      return;
+  if (!activeSessionId) {
+    console.log("⚠️ No active session → ignored");
+    return;
+  }
+
+  const sessionId = activeSessionId;
+
+  console.log("🛑 Ending session:", sessionId, "Duration:", duration);
+
+  /* =============================
+     EMIT TO BACKEND (ONLY SOURCE OF TRUTH)
+  ============================= */
+  try {
+    const socket = await getSocket();
+
+    if (socket?.connected) {
+      socket.emit("call_end", {
+        sessionId,
+        duration,
+        number: currentNumber,
+      });
+
+      console.log("🚀 call_end sent");
+    } else {
+      console.log("⚠️ Socket not connected (end)");
     }
+  } catch (e) {
+    console.log("Socket end error:", e);
+  }
 
-    const sessionId = activeSessionId;
-
-    console.log("🛑 Ending session:", sessionId);
-
-    /* =============================
-       EMIT END
-    ============================= */
+  /* =============================
+     STOP OVERLAY
+  ============================= */
+  setTimeout(() => {
     try {
-      const socket = await getSocket();
+      CallDetector.stopOverlay();
+    } catch {}
+  }, 800);
 
-      if (socket?.connected) {
-        socket.emit("call_end", {
-          sessionId,
-          duration,
-        });
+  /* =============================
+     RESET STATE
+  ============================= */
+  activeSessionId = null;
+  currentNumber = null;
+  isOverlayRunning = false;
 
-        console.log("🚀 call_end sent");
-      } else {
-        console.log("⚠️ Socket not connected (end)");
-      }
-    } catch (e) {
-      console.log("Socket end error:", e);
-    }
-
-    /* =============================
-       STOP OVERLAY (SAFE DELAY)
-    ============================= */
-    setTimeout(() => {
-      try {
-        CallDetector.stopOverlay();
-      } catch {}
-    }, 1200);
-
-    /* =============================
-       RESET STATE
-    ============================= */
-    activeSessionId = null;
-    currentNumber = null;
-    isOverlayRunning = false;
-
-    onEnd && onEnd(duration);
-  });
+  onEnd && onEnd(duration);
+});
 
   /* =============================
      START NATIVE LISTENER

@@ -19,9 +19,12 @@ import { useWallet } from "../context/WalletContext";
 import { useAnimatedNumber } from "../hooks/useAnimatedNumber";
 import { subscribeDashboard } from "../utils/events";
 import { getGreeting } from "../utils/greeting";
+import { connectSocket, onSocketEvent } from "../services/socket";
+import { useRef } from "react";
 
 
 const screenWidth = Dimensions.get("window").width;
+
 
 type Tx = {
   _id: string;
@@ -29,6 +32,7 @@ type Tx = {
   amount: number;
   source: string;
   createdAt: string;
+  
 };
 
 type Dashboard = {
@@ -39,7 +43,10 @@ type Dashboard = {
   weeklyMinutes: number[];
   recentTx: Tx[];
   trustStatus?: "good" | "reduced" | "limited" | "blocked";
+  
 };
+
+
 
 const defaultChart = [0, 0, 0, 0, 0, 0, 0];
 
@@ -53,124 +60,139 @@ export default function HomeScreen() {
   const [refreshing,setRefreshing] = useState(false);
   const [price,setPrice] = useState<number | null>(null);
   const [hideBalance,setHideBalance] = useState(false);
+  const lastUpdateRef = useRef(0);
   
 
-  /* FETCH DASHBOARD */
+
+  /* ================= FETCH ================= */
 
   const fetchDashboard = useCallback(async () => {
-
-    try{
-
+    try {
       const res = await API.get("/api/summary");
-
       setDashboard(res.data);
-
-    }catch(e){
-
-      console.log("Dashboard error:",e);
-
-    }finally{
-
+    } catch (e) {
+      console.log("Dashboard error:", e);
+    } finally {
       setLoading(false);
       setRefreshing(false);
-
     }
-
-  },[]);
-
-  /* FETCH PRICE */
+  }, []);
 
   const loadPrice = useCallback(async () => {
-
-    try{
-
+    try {
       const res = await API.get("/api/price");
-
       setPrice(res.data?.price ?? null);
-
-    }catch(e){
-
-      console.log("Price fetch error:",e);
-
+    } catch (e) {
+      console.log("Price error:", e);
     }
-
-  },[]);
-
-  /* INITIAL LOAD */
-
-  useFocusEffect(
-    useCallback(()=>{
-      fetchDashboard();
-      loadPrice();
-    },[fetchDashboard,loadPrice])
-  );
-
-  /* EVENT SUBSCRIPTION */
-
- useEffect(() => {
-  const unsub = subscribeDashboard(fetchDashboard);
-  return unsub;
-}, [fetchDashboard]);
+  }, []);
 
 
-  /* SAFE VALUES */
 
+   /* ================= INIT ================= */
+
+  useEffect(() => {
+    fetchDashboard();
+    loadPrice();
+  }, []);
+
+  /* ================= SOCKET ================= */
+      useEffect(() => {
+  let unsubWallet: any;
+  let unsubMinutes: any;
+
+  const init = async () => {
+    await connectSocket();
+
+    // 💰 WALLET UPDATE (FIXED)
+    unsubWallet = await onSocketEvent("WALLET_UPDATE", (data) => {
+      console.log("💰 Wallet:", data);
+
+      const now = Date.now();
+      if (now - lastUpdateRef.current < 300) return;
+      lastUpdateRef.current = now;
+
+      setDashboard((prev: any) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          balance: data.balance ?? prev.balance, // ✅ FIXED
+        };
+      });
+    });
+
+    // ⏱ MINUTES UPDATE (CORRECT)
+    unsubMinutes = await onSocketEvent("MINUTES_CREDIT", (data) => {
+      console.log("⏱ Minutes:", data);
+
+      setDashboard((prev: any) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          totalMinutes: prev.totalMinutes + (data.minutes || 0),
+          todayMinutes: prev.todayMinutes + (data.minutes || 0),
+        };
+      });
+    });
+  };
+
+  init();
+
+  return () => {
+    unsubWallet?.();
+    unsubMinutes?.();
+  };
+}, []);
+
+/* ================= VALUES ================= */
 
   const atcValue = dashboard?.balance ?? wallet?.atc ?? 0;
   const minutesValue = dashboard?.totalMinutes ?? wallet?.minutes ?? 0;
 
-
   const animatedATC = useAnimatedNumber(atcValue);
   const animatedMinutes = useAnimatedNumber(minutesValue);
 
-  
-
-  /* REFRESH */
+  /* ================= REFRESH ================= */
 
   const onRefresh = async () => {
-
     setRefreshing(true);
-
     await fetchDashboard();
-
   };
 
-  /* LOADING */
+  /* ================= UI STATES ================= */
 
-  if(loading){
-
-    return(
+  if (loading) {
+    return (
       <View style={s.loader}>
-        <ActivityIndicator size="large" color="#0ea5a4"/>
-        <Text style={{marginTop:10}}>Loading wallet...</Text>
+        <ActivityIndicator size="large" color="#0ea5a4" />
+        <Text style={{ marginTop: 10 }}>Loading wallet...</Text>
       </View>
     );
-
   }
 
-  if(!dashboard){
-
-    return(
+  if (!dashboard) {
+    return (
       <View style={s.center}>
-        <Text>No data available</Text>
+        <Ionicons name="cloud-offline-outline" size={40} color="#94a3b8" />
+        <Text style={{ marginTop: 10 }}>Unable to load dashboard</Text>
       </View>
     );
-
   }
 
-  /* CHART DATA */
+ /* ================= CHART ================= */
+
+  const weeklyData = Array.isArray(dashboard.weeklyMinutes)
+    ? dashboard.weeklyMinutes.slice(0, 7)
+    : defaultChart;
 
   const chartData = {
-    labels:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-    datasets:[
-      {
-        data:
-          dashboard.weeklyMinutes?.length === 7
-            ? dashboard.weeklyMinutes
-            : defaultChart
-      }
-    ]
+    labels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+    datasets: [{ data: weeklyData.length === 7 ? weeklyData : defaultChart }],
   };
+
+
 
   /* TRANSACTION SIGN */
 
@@ -182,16 +204,15 @@ export default function HomeScreen() {
 
   };
 
-  return(
-
+      return (
     <ScrollView
       style={s.container}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh}/>
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-
       <Text style={s.title}>{getGreeting(dashboard.name)}</Text>
+
 
       {/* BETA */}
 
@@ -205,7 +226,7 @@ export default function HomeScreen() {
 
       <View style={s.liveRow}>
         <View style={s.liveDot}/>
-        <Text style={s.liveText}>Live updates enabled</Text>
+        <Text style={s.liveText}>Live earnings active ⚡</Text>
       </View>
 
       {/* ATC BALANCE */}
@@ -237,7 +258,15 @@ export default function HomeScreen() {
           Tap to buy airtime or data
         </Text>
 
+        {price && !hideBalance && (
+          <Text style={{ color: "#ccfbf1", marginTop: 4 }}>
+            ≈ ₵{(animatedATC * price).toFixed(2)}
+          </Text>
+        )}
+
       </TouchableOpacity>
+
+      
 
       {/* PRICE */}
 
@@ -274,8 +303,9 @@ export default function HomeScreen() {
         </Text>
 
         <Text style={s.hint}>
-          Today: {dashboard.todayMinutes} mins
-        </Text>
+        Today: {dashboard.todayMinutes} mins • ~₵
+        {(dashboard.todayMinutes * (price || 0)).toFixed(2)}
+      </Text>
 
       </TouchableOpacity>
 
@@ -362,6 +392,9 @@ export default function HomeScreen() {
 
       {/* WEEKLY CHART */}
 
+
+      
+
       <View style={s.card}>
 
         <Text style={s.cardTitle}>Weekly Minutes</Text>
@@ -388,11 +421,12 @@ export default function HomeScreen() {
 
         <Text style={s.cardTitle}>Recent Transactions</Text>
 
-        {dashboard.recentTx.length === 0 && (
+        
+        {(!dashboard.recentTx || dashboard.recentTx.length === 0) && (
           <Text style={s.hint}>No transactions yet</Text>
         )}
 
-        {dashboard.recentTx.map(tx=>(
+        {(dashboard.recentTx || []).slice(0, 10).map(tx => (
           <View key={tx._id} style={s.txRow}>
 
             <Text>
@@ -421,6 +455,7 @@ container:{flex:1,padding:20,backgroundColor:"#fff"},
 loader:{flex:1,justifyContent:"center",alignItems:"center"},
 center:{flex:1,justifyContent:"center",alignItems:"center"},
 title:{fontSize:26,fontWeight:"800",marginBottom:10},
+
 
 betaBox:{backgroundColor:"#fff7ed",padding:10,borderRadius:8,marginBottom:12},
 betaText:{fontSize:12,color:"#92400e"},
@@ -457,3 +492,5 @@ progressFill:{height:10,borderRadius:999},
 trustHint:{marginTop:6,fontSize:12,color:"#64748b"}
 
 });
+
+

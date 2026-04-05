@@ -2,17 +2,12 @@ import express from "express";
 import auth from "../middleware/authMiddleware";
 
 import CallSession from "../models/CallSession";
-import DailyCall from "../models/DailyCall";
-import Wallet from "../models/Wallet";
-import SystemSettings from "../models/SystemSettings";
-
-import { runCallFraudChecks } from "../services/callFraudEngine";
 import SpamNumber from "../models/SpamNumber";
 
 const router = express.Router();
 
 /* ============================================
-   📱 HELPER: NORMALIZE PHONE NUMBER
+   📱 NORMALIZE PHONE NUMBER
 ============================================ */
 const normalizeNumber = (num: string) => {
   if (!num) return "";
@@ -50,6 +45,11 @@ router.post("/report", auth, async (req: any, res) => {
         });
       }
 
+      // 🚫 limit abuse
+      if (record.reports > 50) {
+        return res.json({ success: false, message: "Max reports reached" });
+      }
+
       record.reports += 1;
       record.reportedBy.push(userId);
       record.lastReportedAt = new Date();
@@ -63,7 +63,7 @@ router.post("/report", auth, async (req: any, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       reports: record.reports,
     });
@@ -75,11 +75,10 @@ router.post("/report", auth, async (req: any, res) => {
 });
 
 /* ============================================
-   💰 AUTO CREDIT (NOW SAFE / NO DB WRITE)
+   📊 AUTO CREDIT (READ-ONLY)
 ============================================ */
 router.post("/auto-credit", auth, async (req: any, res) => {
   try {
-    const userId = req.user.id;
     const { sessionId } = req.body;
 
     if (!sessionId) {
@@ -92,53 +91,15 @@ router.post("/auto-credit", auth, async (req: any, res) => {
       return res.status(404).json({ message: "Session not found" });
     }
 
-    // 🚫 Prevent double credit
-    if (session.status !== "pending") {
-      return res.json({ credited: 0, message: "Already processed" });
-    }
-
-    const seconds = session.durationSeconds;
-    const minutes = Math.floor(seconds / 60);
-
-    /* -------- MIN 5 MIN -------- */
-    if (minutes < 5) {
-      session.status = "rejected";
-      await session.save();
-      return res.json({ credited: 0 });
-    }
-
-    /* -------- FRAUD CHECK -------- */
-    const fraud = await runCallFraudChecks({
-      userId,
-      duration: seconds,
-      phoneNumber: session.phoneNumber,
-    });
-
-    if (fraud.blocked) {
-      session.status = "fraud";
-      await session.save();
-      return res.json({ credited: 0 });
-    }
-
-    /* -------- CREDIT -------- */
-    session.status = "valid";
-    session.creditedMinutes = minutes;
-    await session.save();
-
-    await Wallet.findOneAndUpdate(
-      { userId },
-      { $inc: { totalMinutes: minutes } },
-      { upsert: true }
-    );
-
-    res.json({
-      credited: minutes,
-      trustScore: fraud.trustScore,
+    // 🔥 ONLY RETURN STATUS (NO CREDIT HERE)
+    return res.json({
+      credited: session.creditedMinutes || 0,
+      status: session.status,
     });
 
   } catch (err) {
     console.error("AUTO CREDIT ERROR:", err);
-    res.status(500).json({ message: "Failed to process call" });
+    res.status(500).json({ message: "Failed" });
   }
 });
 
@@ -153,7 +114,7 @@ router.get("/weekly", auth, async (req: any, res) => {
       {
         $match: {
           userId: uid,
-          status: "valid",
+          status: "completed", // ✅ FIXED
         },
       },
       {
@@ -170,7 +131,10 @@ router.get("/weekly", auth, async (req: any, res) => {
       { $sort: { _id: 1 } },
     ]);
 
-    res.json(data);
+    return res.json({
+      success: true,
+      data,
+    });
 
   } catch (err) {
     console.error("WEEKLY ERROR:", err);
@@ -187,6 +151,11 @@ router.post("/check-number", async (req, res) => {
 
     if (!number) {
       return res.status(400).json({ message: "Number required" });
+    }
+
+    // 🔐 validate format
+    if (!number.match(/^\+?\d{9,15}$/)) {
+      return res.status(400).json({ message: "Invalid number" });
     }
 
     number = normalizeNumber(number);

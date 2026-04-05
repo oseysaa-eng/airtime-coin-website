@@ -33,6 +33,7 @@ public class OverlayService extends Service {
     private TextView spamTagView;
 
     private boolean isExpanded = false;
+    
 
     @Override
 public int onStartCommand(Intent intent, int flags, int startId) {
