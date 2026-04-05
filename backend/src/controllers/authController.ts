@@ -32,12 +32,17 @@ async function generateReferralCode(): Promise<string> {
 /* =============================
    GENERATE TOKENS
 ============================= */
-function generateTokens(userId: string) {
-  const accessToken = jwt.sign({ id: userId }, JWT_SECRET!, {
+function generateTokens(user: any) {
+  const payload = {
+    id: user._id.toString(),
+    role: user.role || "user",
+  };
+
+  const accessToken = jwt.sign(payload, JWT_SECRET!, {
     expiresIn: ACCESS_EXPIRES,
   });
 
-  const refreshToken = jwt.sign({ id: userId }, JWT_REFRESH_SECRET!, {
+  const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET!, {
     expiresIn: REFRESH_EXPIRES,
   });
 
@@ -87,8 +92,7 @@ export const registerUser = async (req: Request, res: Response) => {
       referralCode: newReferralCode,
       referredBy,
     });
-
-    const { accessToken, refreshToken } = generateTokens(user._id.toString());
+    const { accessToken, refreshToken } = generateTokens(user);
 
     // ✅ SAVE REFRESH TOKEN (multi-device)
     user.refreshTokens = [refreshToken];
@@ -142,7 +146,7 @@ export const loginUser = async (req: Request, res: Response) => {
       });
     }
 
-    const { accessToken, refreshToken } = generateTokens(user._id.toString());
+    const { accessToken, refreshToken } = generateTokens(user);
 
     /* 🔐 DEVICE TRACKING */
     if (fingerprint) {
@@ -150,6 +154,9 @@ export const loginUser = async (req: Request, res: Response) => {
     }
 
     user.lastLoginAt = new Date();
+
+    user.lastIP = req.ip;
+user.lastUserAgent = req.headers["user-agent"];
 
     // ✅ ADD refresh token (multi-device)
     user.refreshTokens.push(refreshToken);
@@ -200,13 +207,15 @@ export const refreshAuthToken = async (req: Request, res: Response) => {
     }
 
     // 🔁 ROTATE TOKENS
-    const { accessToken, refreshToken: newRefresh } = generateTokens(
-      user._id.toString()
-    );
+
+    const { accessToken, refreshToken: newRefresh } = generateTokens(user);
 
     // replace old token
     user.refreshTokens = user.refreshTokens.filter((t) => t !== refresh);
-    user.refreshTokens.push(newRefresh);
+    user.refreshTokens = [
+  ...user.refreshTokens.slice(-4), // keep last 4
+  refreshAuthToken,
+];
 
     await user.save();
 
@@ -219,6 +228,35 @@ export const refreshAuthToken = async (req: Request, res: Response) => {
     return res.status(401).json({
       message: "Invalid refresh token",
     });
+  }
+};
+
+
+/* =============================
+   LOGOUT 
+============================= */
+
+export const logoutUser = async (req: any, res: Response) => {
+  try {
+    const refresh = req.body.refreshToken;
+
+    if (!refresh) {
+      return res.status(400).json({ message: "No token provided" });
+    }
+
+    const user = await User.findById(req.user.id).select("+refreshTokens");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.refreshTokens = user.refreshTokens.filter(t => t !== refresh);
+    await user.save();
+
+    return res.json({ message: "Logged out successfully" });
+
+  } catch (err) {
+    return res.status(500).json({ message: "Logout failed" });
   }
 };
 

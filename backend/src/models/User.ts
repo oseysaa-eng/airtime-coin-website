@@ -102,7 +102,6 @@ const UserSchema = new Schema<IUser>(
       type: String,
       unique: true,
       sparse: true,
-      index: true,
     },
 
     referredBy: {
@@ -122,7 +121,6 @@ const UserSchema = new Schema<IUser>(
       required: true,
       unique: true,
       lowercase: true,
-      index: true,
     },
 
     password: {
