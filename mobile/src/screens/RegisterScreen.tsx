@@ -28,34 +28,34 @@ export default function RegisterScreen({ navigation }: any) {
   const [errors, setErrors] = useState<any>({});
   const [loading, setLoading] = useState(false);
 
-  /* =============================
-     VALIDATION
-  ============================= */
   const validateForm = () => {
-    let newErrors: any = {};
-
+    const newErrors: Record<string, string> = {};
     const cleanEmail = email.trim();
 
-    if (!username.trim()) newErrors.username = "Username required";
+    if (!username.trim()) {
+      newErrors.username = "Username required";
+    }
 
-    if (!cleanEmail) newErrors.email = "Email required";
-    else if (!/\S+@\S+\.\S+/.test(cleanEmail))
+    if (!cleanEmail) {
+      newErrors.email = "Email required";
+    } else if (!/\S+@\S+\.\S+/.test(cleanEmail)) {
       newErrors.email = "Invalid email";
+    }
 
-    if (!password) newErrors.password = "Password required";
-    else if (password.length < 6)
+    if (!password) {
+      newErrors.password = "Password required";
+    } else if (password.length < 6) {
       newErrors.password = "Minimum 6 characters";
+    }
 
-    if (!acceptTerms) newErrors.terms = "You must accept terms";
+    if (!acceptTerms) {
+      newErrors.terms = "You must accept terms";
+    }
 
     setErrors(newErrors);
-
     return Object.keys(newErrors).length === 0;
   };
 
-  /* =============================
-     REGISTER
-  ============================= */
   const handleRegister = async () => {
     if (loading) return;
 
@@ -71,7 +71,7 @@ export default function RegisterScreen({ navigation }: any) {
         password,
         name: username.trim(),
         fullName: fullName.trim(),
-        referralCode: referralCode
+        referralCode: referralCode.trim()
           ? referralCode.trim().toUpperCase()
           : undefined,
       });
@@ -81,9 +81,7 @@ export default function RegisterScreen({ navigation }: any) {
       }
 
       Alert.alert("Success 🎉", "Account created successfully!");
-
       navigation.replace("Login");
-
     } catch (err: any) {
       console.log("REGISTER ERROR:", err);
 
@@ -102,106 +100,128 @@ export default function RegisterScreen({ navigation }: any) {
     }
   };
 
-  /* =============================
-     UI
-  ============================= */
+  const isFormIncomplete =
+    !username.trim() || !email.trim() || !password || !acceptTerms;
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.container}
       >
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
           <View style={styles.card}>
-
             <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>
-              Join Airtime Coin 🚀
-            </Text>
+            <Text style={styles.subtitle}>Join Airtime Coin 🚀</Text>
 
-            {/* USERNAME */}
             <Text style={styles.label}>Username</Text>
             <TextInput
               placeholder="Enter username"
+              placeholderTextColor="#94a3b8"
               style={[styles.input, errors.username && styles.errorInput]}
               value={username}
               onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
-            {errors.username && <Text style={styles.error}>{errors.username}</Text>}
+            {errors.username ? (
+              <Text style={styles.error}>{errors.username}</Text>
+            ) : null}
 
-            {/* FULL NAME */}
             <Text style={styles.label}>Full Name</Text>
             <TextInput
               placeholder="Enter full name"
+              placeholderTextColor="#94a3b8"
               style={styles.input}
               value={fullName}
               onChangeText={setFullName}
+              autoCorrect={false}
             />
 
-            {/* EMAIL */}
             <Text style={styles.label}>Email</Text>
             <TextInput
               placeholder="example@gmail.com"
+              placeholderTextColor="#94a3b8"
               style={[styles.input, errors.email && styles.errorInput]}
               keyboardType="email-address"
               autoCapitalize="none"
+              autoCorrect={false}
               value={email}
               onChangeText={setEmail}
             />
-            {errors.email && <Text style={styles.error}>{errors.email}</Text>}
+            {errors.email ? (
+              <Text style={styles.error}>{errors.email}</Text>
+            ) : null}
 
-            {/* PASSWORD */}
             <Text style={styles.label}>Password</Text>
-            <View style={[styles.passwordWrap, errors.password && styles.errorInput]}>
+            <View
+              style={[styles.passwordWrap, errors.password && styles.errorInput]}
+            >
               <TextInput
                 placeholder="Minimum 6 characters"
+                placeholderTextColor="#94a3b8"
                 style={styles.passwordInput}
                 secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={setPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
               />
 
               <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Feather name={showPassword ? "eye" : "eye-off"} size={20} />
+                <Feather
+                  name={showPassword ? "eye" : "eye-off"}
+                  size={20}
+                  color="#64748b"
+                />
               </TouchableOpacity>
             </View>
-            {errors.password && <Text style={styles.error}>{errors.password}</Text>}
+            {errors.password ? (
+              <Text style={styles.error}>{errors.password}</Text>
+            ) : null}
 
-            {/* REFERRAL */}
             <Text style={styles.label}>Referral Code (Optional)</Text>
             <TextInput
               placeholder="Enter referral code"
+              placeholderTextColor="#94a3b8"
               style={styles.input}
               value={referralCode}
               onChangeText={setReferralCode}
+              autoCapitalize="characters"
+              autoCorrect={false}
             />
 
-            {/* TERMS */}
             <TouchableOpacity
               style={styles.termsRow}
               onPress={() => setAcceptTerms(!acceptTerms)}
+              activeOpacity={0.8}
             >
               <View style={[styles.checkbox, acceptTerms && styles.checked]}>
-                {acceptTerms && <Feather name="check" size={14} color="#fff" />}
+                {acceptTerms ? (
+                  <Feather name="check" size={14} color="#fff" />
+                ) : null}
               </View>
 
               <Text style={styles.termsText}>
-                I agree to the{" "}
-                <Text style={styles.linkText}>Terms</Text> &{" "}
+                I agree to the <Text style={styles.linkText}>Terms</Text> &{" "}
                 <Text style={styles.linkText}>Privacy Policy</Text>
               </Text>
             </TouchableOpacity>
 
-            {errors.terms && <Text style={styles.error}>{errors.terms}</Text>}
+            {errors.terms ? (
+              <Text style={styles.error}>{errors.terms}</Text>
+            ) : null}
 
-            {/* BUTTON */}
             <TouchableOpacity
               style={[
                 styles.btn,
-                (loading || !acceptTerms) && styles.disabledBtn,
+                (loading || isFormIncomplete) && styles.disabledBtn,
               ]}
               onPress={handleRegister}
-              disabled={loading || !acceptTerms}
+              disabled={loading || isFormIncomplete}
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
@@ -210,13 +230,11 @@ export default function RegisterScreen({ navigation }: any) {
               )}
             </TouchableOpacity>
 
-            {/* LOGIN */}
             <TouchableOpacity onPress={() => navigation.replace("Login")}>
               <Text style={styles.loginLink}>
                 Already have an account? Login
               </Text>
             </TouchableOpacity>
-
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -224,13 +242,14 @@ export default function RegisterScreen({ navigation }: any) {
   );
 }
 
-/* =============================
-   STYLES (MODERN)
-============================= */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#020617",
+  },
+
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
     padding: 20,
   },

@@ -13,6 +13,7 @@ import { LineChart } from "react-native-chart-kit";
 
 import API from "../api/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getSocket } from "../services/socket";
 
 /* ---------------- PERMISSIONS ---------------- */
 const requestCallPermissions = async () => {
@@ -83,59 +84,72 @@ export default function CallMiningScreen() {
 
   /* ---------------- SOCKET LISTENERS ---------------- */
   useEffect(() => {
-    const socket = global.socket;
-    if (!socket) return;
+    let socket: any;
 
-    /* -------- CALL START -------- */
-    const onCallStart = (data: any) => {
-      console.log("📞 UI CALL START", data);
+    const setup = async () => {
+      socket = await getSocket();
+      if (!socket) return;
 
-      setCaller({
-        ...data,
-        spamStatus: data.spam || "unknown",
-        spamLabel: data.spam || "Unknown",
-      });
+      /* -------- CALL START -------- */
+      const onCallStart = (data: any) => {
+        console.log("📞 UI CALL START", data);
 
-      setActive(true);
-      setSeconds(0);
+        setCaller({
+          ...data,
+          spamStatus: data.spam || "unknown",
+          spamLabel: data.spam || "Unknown",
+        });
 
-      if (intervalRef.current) clearInterval(intervalRef.current);
+        setActive(true);
+        setSeconds(0);
 
-      intervalRef.current = setInterval(() => {
-        setSeconds((prev) => prev + 1);
-      }, 1000);
+        if (intervalRef.current) clearInterval(intervalRef.current);
+
+        intervalRef.current = setInterval(() => {
+          setSeconds((prev) => prev + 1);
+        }, 1000);
+      };
+
+      /* -------- CALL END -------- */
+      const onCallEnd = () => {
+        console.log("📞 UI CALL END");
+
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+
+        setActive(false);
+        setCaller(null);
+
+        loadWeeklyCalls();
+      };
+
+      /* -------- WALLET UPDATE -------- */
+      const onWalletUpdate = (data: any) => {
+        console.log("💰 Wallet Updated:", data);
+
+        Alert.alert(
+          "Earnings Received 💰",
+          `+${data.earnings?.toFixed?.(3) || 0} ATC`
+        );
+      };
+
+      socket.on("CALL_STARTED", onCallStart);
+      socket.on("CALL_ENDED", onCallEnd);
+      socket.on("WALLET_UPDATE", onWalletUpdate);
+
+      return () => {
+        socket.off("CALL_STARTED", onCallStart);
+        socket.off("CALL_ENDED", onCallEnd);
+        socket.off("WALLET_UPDATE", onWalletUpdate);
+      };
     };
 
-    /* -------- CALL END -------- */
-    const onCallEnd = () => {
-      console.log("📞 UI CALL END");
-
-      if (intervalRef.current) clearInterval(intervalRef.current);
-
-      setActive(false);
-      setCaller(null);
-
-      loadWeeklyCalls();
-    };
-
-    /* -------- WALLET UPDATE -------- */
-    const onWalletUpdate = (data: any) => {
-      console.log("💰 Wallet Updated:", data);
-
-      Alert.alert(
-        "Earnings Received 💰",
-        `+${data.earnings.toFixed(3)} ATC`
-      );
-    };
-
-    socket.on("CALL_STARTED", onCallStart);
-    socket.on("CALL_ENDED", onCallEnd);
-    socket.on("WALLET_UPDATE", onWalletUpdate);
+    const cleanupPromise = setup();
 
     return () => {
-      socket.off("CALL_STARTED", onCallStart);
-      socket.off("CALL_ENDED", onCallEnd);
-      socket.off("WALLET_UPDATE", onWalletUpdate);
+      cleanupPromise.then((cleanup: any) => cleanup && cleanup());
     };
   }, []);
 
@@ -149,10 +163,7 @@ export default function CallMiningScreen() {
         return;
       }
 
-      /* -------- Overlay -------- */
-      const overlayAsked = await AsyncStorage.getItem("overlay_asked");
-
-      if (!overlayAsked) {
+      if (!(await AsyncStorage.getItem("overlay_asked"))) {
         Alert.alert(
           "Enable Overlay",
           "Allow 'Appear on top'",
@@ -161,17 +172,16 @@ export default function CallMiningScreen() {
         await AsyncStorage.setItem("overlay_asked", "true");
       }
 
-      /* -------- Battery -------- */
-      Alert.alert(
-        "Disable Battery Optimization",
-        "Allow background activity",
-        [{ text: "Open Settings", onPress: () => Linking.openSettings() }]
-      );
+      if (!(await AsyncStorage.getItem("battery_asked"))) {
+        Alert.alert(
+          "Disable Battery Optimization",
+          "Allow background activity",
+          [{ text: "Open Settings", onPress: () => Linking.openSettings() }]
+        );
+        await AsyncStorage.setItem("battery_asked", "true");
+      }
 
-      /* -------- Accessibility -------- */
-      const accessAsked = await AsyncStorage.getItem("accessibility_asked");
-
-      if (!accessAsked) {
+      if (!(await AsyncStorage.getItem("accessibility_asked"))) {
         Alert.alert(
           "Enable Call Mining",
           "Turn on Accessibility Service",
@@ -186,7 +196,10 @@ export default function CallMiningScreen() {
     setup();
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, []);
 
@@ -199,7 +212,6 @@ export default function CallMiningScreen() {
         Calls longer than 10 seconds earn rewards automatically
       </Text>
 
-      {/* -------- CALLER -------- */}
       {caller && (
         <View style={{ marginVertical: 10 }}>
           <Text style={styles.name}>{caller.name}</Text>
@@ -222,14 +234,12 @@ export default function CallMiningScreen() {
         </View>
       )}
 
-      {/* REPORT */}
       {caller && !caller.isSaved && (
         <Text onPress={reportSpam} style={styles.report}>
           🚫 Report as Spam
         </Text>
       )}
 
-      {/* TIMER */}
       {active && (
         <Text style={styles.timer}>
           📞 {Math.floor(seconds / 60)}:
@@ -237,7 +247,6 @@ export default function CallMiningScreen() {
         </Text>
       )}
 
-      {/* CHART */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Weekly Call Minutes</Text>
         <Text style={styles.small}>Today: {todayCallMinutes} mins</Text>

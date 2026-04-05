@@ -1,11 +1,17 @@
 import bcrypt from "bcryptjs";
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
-import mongoose from "mongoose";
 import User from "../models/User";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
+/* =============================
+   ENV VALIDATION
+============================= */
+if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
+  throw new Error("JWT secrets not configured");
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
 const ACCESS_EXPIRES = "1d";
 const REFRESH_EXPIRES = "30d";
@@ -27,11 +33,11 @@ async function generateReferralCode(): Promise<string> {
    GENERATE TOKENS
 ============================= */
 function generateTokens(userId: string) {
-  const accessToken = jwt.sign({ id: userId }, JWT_SECRET, {
+  const accessToken = jwt.sign({ id: userId }, JWT_SECRET!, {
     expiresIn: ACCESS_EXPIRES,
   });
 
-  const refreshToken = jwt.sign({ id: userId }, JWT_REFRESH_SECRET, {
+  const refreshToken = jwt.sign({ id: userId }, JWT_REFRESH_SECRET!, {
     expiresIn: REFRESH_EXPIRES,
   });
 
@@ -62,7 +68,6 @@ export const registerUser = async (req: Request, res: Response) => {
     }
 
     const hash = await bcrypt.hash(password, 12);
-
     const newReferralCode = await generateReferralCode();
 
     let referredBy = null;
@@ -71,47 +76,34 @@ export const registerUser = async (req: Request, res: Response) => {
       const refUser = await User.findOne({
         referralCode: referralCode.toUpperCase(),
       });
-
-      if (refUser) {
-        referredBy = refUser._id;
-      }
+      if (refUser) referredBy = refUser._id;
     }
 
     const user = await User.create({
-      userId: new mongoose.Types.ObjectId().toString(),
       email: email.toLowerCase(),
       password: hash,
       name: name || "",
       fullName: fullName || "",
       referralCode: newReferralCode,
       referredBy,
-      balance: 0,
-      minutes: 0,
-      atc: 0,
-      rate: 0,
-      totalEarnings: 0,
-      totalMinutes: 0,
-      pushTokens: [],
-      earlyAdopter: false,
-      role: "user",
     });
 
     const { accessToken, refreshToken } = generateTokens(user._id.toString());
 
-  
-
-    const safeUser = {
-      _id: user._id,
-      email: user.email,
-      name: user.name,
-    };
+    // ✅ SAVE REFRESH TOKEN (multi-device)
+    user.refreshTokens = [refreshToken];
+    await user.save();
 
     return res.status(201).json({
-  message: "Registered successfully",
-  token: accessToken, // keep frontend compatibility
-  refreshToken,
-  user: safeUser,
-});
+      message: "Registered successfully",
+      token: accessToken,
+      refreshToken,
+      user: {
+        _id: user._id,
+        email: user.email,
+        name: user.name,
+      },
+    });
 
   } catch (err) {
     console.error("REGISTER ERROR:", err);
@@ -134,7 +126,7 @@ export const loginUser = async (req: Request, res: Response) => {
 
     const user = await User.findOne({
       email: email.toLowerCase(),
-    }).select("+password");
+    }).select("+password +refreshTokens");
 
     if (!user || !user.password) {
       return res.status(401).json({
@@ -150,26 +142,30 @@ export const loginUser = async (req: Request, res: Response) => {
       });
     }
 
+    const { accessToken, refreshToken } = generateTokens(user._id.toString());
+
     /* 🔐 DEVICE TRACKING */
     if (fingerprint) {
       user.lastDevice = fingerprint;
-      await user.save();
     }
 
-    const { accessToken, refreshToken } = generateTokens(user._id.toString());
+    user.lastLoginAt = new Date();
 
-    const safeUser = {
-      _id: user._id,
-      email: user.email,
-      name: user.name,
-    };
+    // ✅ ADD refresh token (multi-device)
+    user.refreshTokens.push(refreshToken);
+
+    await user.save();
+
     return res.status(200).json({
-  message: "Login successful",
-  token: accessToken,
-  refreshToken,
-  user: safeUser,
-});
-
+      message: "Login successful",
+      token: accessToken,
+      refreshToken,
+      user: {
+        _id: user._id,
+        email: user.email,
+        name: user.name,
+      },
+    });
 
   } catch (error: any) {
     console.error("LOGIN ERROR:", error);
@@ -180,7 +176,7 @@ export const loginUser = async (req: Request, res: Response) => {
 };
 
 /* =============================
-   REFRESH TOKEN (🔥 REQUIRED)
+   REFRESH TOKEN
 ============================= */
 export const refreshAuthToken = async (req: Request, res: Response) => {
   try {
@@ -190,23 +186,33 @@ export const refreshAuthToken = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "No refresh token" });
     }
 
-    const decoded: any = jwt.verify(refresh, JWT_REFRESH_SECRET);
+    const decoded: any = jwt.verify(refresh, JWT_REFRESH_SECRET!);
 
-    // ✅ VERIFY USER STILL EXISTS
-    const user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.id).select("+refreshTokens");
 
     if (!user) {
-      return res.status(401).json({ message: "User no longer exists" });
+      return res.status(401).json({ message: "User not found" });
     }
 
-    // 🔁 ROTATE TOKENS (BEST PRACTICE)
+    // ✅ VERIFY TOKEN EXISTS IN DB
+    if (!user.refreshTokens.includes(refresh)) {
+      return res.status(403).json({ message: "Invalid session" });
+    }
+
+    // 🔁 ROTATE TOKENS
     const { accessToken, refreshToken: newRefresh } = generateTokens(
       user._id.toString()
     );
 
+    // replace old token
+    user.refreshTokens = user.refreshTokens.filter((t) => t !== refresh);
+    user.refreshTokens.push(newRefresh);
+
+    await user.save();
+
     return res.json({
       token: accessToken,
-      refreshToken: newRefresh, // 🔥 NEW refresh token
+      refreshToken: newRefresh,
     });
 
   } catch (err) {
@@ -222,8 +228,8 @@ export const refreshAuthToken = async (req: Request, res: Response) => {
 export const getMe = async (req: any, res: Response) => {
   try {
     const user = await User.findById(req.user.id)
-  .select("-password")
-  .lean();
+      .select("-password -refreshTokens")
+      .lean();
 
     if (!user) {
       return res.status(404).json({

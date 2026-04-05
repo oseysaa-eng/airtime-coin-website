@@ -80,91 +80,110 @@ export default function LoginScreen({ navigation }: any) {
      LOGIN
   ============================= */
   const handleLogin = async () => {
-    if (loading) return; // 🔥 prevent spam clicks
-    if (!validate()) return;
+  if (loading) return;
 
-    if (!fingerprint) {
-      Alert.alert("Device Error", "Unable to verify this device");
-      return;
-    }
+  if (!validate()) return;
 
-    try {
-      setLoading(true);
+  if (!fingerprint) {
+    Alert.alert("Device Error", "Unable to verify this device");
+    return;
+  }
 
-      const res = await API.post("/api/auth/login", {
-        email: email.trim(),
+  try {
+    setLoading(true);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000); // ⏱️ 15s timeout
+
+    const res = await API.post(
+      "/api/auth/login",
+      {
+        email: email.trim().toLowerCase(), // ✅ FIXED
         password,
         fingerprint,
-      });
+      },
+      { signal: controller.signal }
+    );
 
-      if (!res.data?.token) {
-        throw new Error("Invalid login response");
-      }
+    clearTimeout(timeout);
 
-      const { token, refreshToken, user } = res.data;
-
-      /* =============================
-         STORE SESSION
-      ============================= */
-      await AsyncStorage.multiSet([
-        ["userToken", token],
-        ["refreshToken", refreshToken || ""],
-        ["userId", user._id],
-        ["hasAccount", "true"],
-      ]);
-
-      /* =============================
-         CONNECT SOCKET
-      ============================= */
-      await connectSocket();
-
-      console.log("✅ Login successful");
-
-      navigation.replace("MainTabs");
-
-    } catch (err: any) {
-      console.log("Login error:", err);
-
-      if (!err.response) {
-        Alert.alert("Network Error", "Check your internet connection");
-      } else {
-        Alert.alert(
-          "Login Failed",
-          err?.response?.data?.message || "Invalid credentials"
-        );
-      }
-    } finally {
-      setLoading(false);
+    if (!res.data?.token) {
+      throw new Error("Invalid login response");
     }
-  };
+
+    const { token, refreshToken, user } = res.data;
+
+    await AsyncStorage.multiSet([
+      ["userToken", token],
+      ["refreshToken", refreshToken || ""],
+      ["userId", user._id],
+      ["hasAccount", "true"],
+    ]);
+
+    /* =============================
+       CONNECT SOCKET SAFELY
+    ============================= */
+    try {
+      await connectSocket();
+    } catch {
+      console.log("⚠️ Socket failed (non-blocking)");
+    }
+
+    console.log("✅ Login successful");
+
+    navigation.replace("MainTabs");
+
+  } catch (err: any) {
+    console.log("Login error:", err);
+
+    if (err.name === "AbortError") {
+      Alert.alert("Timeout", "Server is taking too long. Try again.");
+    } else if (!err.response) {
+      Alert.alert("Network Error", "Check your internet connection");
+    } else {
+      Alert.alert(
+        "Login Failed",
+        err?.response?.data?.message || "Invalid credentials"
+      );
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   /* =============================
      BIOMETRIC LOGIN
   ============================= */
   const handleBiometricAuth = async () => {
-    try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: "Authenticate",
-        fallbackLabel: "Use password",
-      });
+  try {
+    const result = await LocalAuthentication.authenticateAsync({
+      promptMessage: "Authenticate",
+      fallbackLabel: "Use password",
+    });
 
-      if (!result.success) return;
+    if (!result.success) return;
 
-      const token = await AsyncStorage.getItem("userToken");
+    const token = await AsyncStorage.getItem("userToken");
 
-      if (!token) {
-        Alert.alert("Session expired", "Please login again");
-        return;
-      }
-
-      await connectSocket();
-
-      navigation.replace("MainTabs");
-
-    } catch (err) {
-      console.log("Biometric error:", err);
+    if (!token) {
+      Alert.alert("Session expired", "Please login again");
+      return;
     }
-  };
+
+    /* OPTIONAL: validate token expiry later */
+
+    try {
+      await connectSocket();
+    } catch {
+      console.log("Socket reconnect failed");
+    }
+
+    navigation.replace("MainTabs");
+
+  } catch (err) {
+    console.log("Biometric error:", err);
+  }
+};
 
   return (
     <KeyboardAvoidingView
@@ -192,7 +211,7 @@ export default function LoginScreen({ navigation }: any) {
         <TextInput
           style={[theme.input, emailError && { borderColor: "#ef4444" }]}
           placeholder="Email"
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={darkMode ? "#64748b" : "#94a3b8"}
           autoCapitalize="none"
           value={email}
           onChangeText={setEmail}

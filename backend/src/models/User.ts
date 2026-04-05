@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
+
 export interface IUser extends Document {
   email: string;
   password: string;
@@ -9,13 +10,12 @@ export interface IUser extends Document {
 
   referralCode?: string;
   referredBy?: mongoose.Types.ObjectId | null;
+  referredUsers: mongoose.Types.ObjectId[];
 
   referralCount: number;
   referralEarnings: number;
 
-  referredUsers: mongoose.Types.ObjectId[];
-
-  refreshToken?: string;
+  refreshTokens: string[]; // ✅ multi-device support
 
   balance: number;
   minutes: number;
@@ -61,9 +61,9 @@ const UserSchema = new Schema<IUser>(
   {
     /* ================= SECURITY ================= */
 
-    refreshToken: {
-      type: String,
-      default: null,
+    refreshTokens: {
+      type: [String], // ✅ allow multiple devices
+      default: [],
       select: false,
     },
 
@@ -150,7 +150,11 @@ const UserSchema = new Schema<IUser>(
 
     totalCalls: { type: Number, default: 0 },
 
-    lastCallAt: { type: Date, default: null },
+    lastCallAt: {
+      type: Date,
+      default: null,
+      index: true, // ✅ useful for analytics
+    },
 
     fraudScore: {
       type: Number,
@@ -197,17 +201,11 @@ const UserSchema = new Schema<IUser>(
 );
 
 /* ================= INDEXES ================= */
-UserSchema.index({ email: 1 });
-UserSchema.index({ referralCode: 1 });
+
+// ⚠️ REMOVE duplicates → only keep non-field indexes
 UserSchema.index({ fraudScore: -1 });
 UserSchema.index({ createdAt: -1 });
 UserSchema.index({ status: 1, kycStatus: 1 });
-UserSchema.index({ pushTokens: 1 });
 
 export default mongoose.models.User ||
   mongoose.model<IUser>("User", UserSchema);
-
-
-
-
-  
