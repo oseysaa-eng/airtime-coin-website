@@ -8,24 +8,22 @@ let socket: Socket | null = null;
 let isConnecting = false;
 
 /* =====================================
-   CONNECT (SAFE + SINGLE INSTANCE)
+   CONNECT SOCKET (SAFE + STABLE)
 ===================================== */
 export const connectSocket = async (): Promise<Socket | null> => {
   try {
-    // ✅ prevent duplicate connections
-    if (socket && socket.connected) return socket;
+    if (socket?.connected) return socket;
     if (isConnecting) return socket;
 
     const token = await AsyncStorage.getItem("userToken");
 
     if (!token) {
-      console.log("⚠️ No token → skipping socket connection");
+      console.log("⚠️ No token → skip socket");
       return null;
     }
 
     isConnecting = true;
 
-    // 🔥 cleanup old socket completely
     if (socket) {
       socket.removeAllListeners();
       socket.disconnect();
@@ -37,33 +35,52 @@ export const connectSocket = async (): Promise<Socket | null> => {
       transports: ["websocket"],
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity, // 🔥 keep trying
       reconnectionDelay: 2000,
     });
 
+    /* =============================
+       EVENTS
+    ============================= */
+
     socket.on("connect", async () => {
-      console.log("✅ Socket connected:", socket?.id);
+      console.log("🟢 Socket connected:", socket?.id);
 
       const userId = await AsyncStorage.getItem("userId");
 
       if (userId) {
         socket?.emit("join", userId);
       }
+
+      isConnecting = false; // ✅ FIXED (only here)
     });
 
     socket.on("disconnect", (reason) => {
-      console.log("❌ Socket disconnected:", reason);
+      console.log("🔴 Socket disconnected:", reason);
     });
 
-    socket.on("connect_error", (err) => {
+    socket.on("connect_error", async (err) => {
       console.log("❌ Connect error:", err.message);
+
+      isConnecting = false;
+
+      /* 🔥 HANDLE UNAUTHORIZED */
+      if (err.message === "Unauthorized") {
+        console.log("🔐 Token invalid → forcing logout");
+
+        await AsyncStorage.multiRemove([
+          "userToken",
+          "refreshToken",
+          "userId",
+        ]);
+
+        disconnectSocket();
+      }
     });
 
     socket.on("error", (err) => {
       console.log("❌ Socket error:", err);
     });
-
-    isConnecting = false;
 
     return socket;
 
@@ -75,7 +92,7 @@ export const connectSocket = async (): Promise<Socket | null> => {
 };
 
 /* =====================================
-   GET SOCKET (SAFE)
+   GET SOCKET
 ===================================== */
 export const getSocket = async (): Promise<Socket | null> => {
   if (!socket || !socket.connected) {
@@ -85,7 +102,7 @@ export const getSocket = async (): Promise<Socket | null> => {
 };
 
 /* =====================================
-   DISCONNECT (CLEAN)
+   DISCONNECT
 ===================================== */
 export const disconnectSocket = () => {
   if (socket) {
@@ -96,7 +113,7 @@ export const disconnectSocket = () => {
 };
 
 /* =====================================
-   SAFE EVENT LISTENER (NO DUPLICATES)
+   SAFE EVENT LISTENER
 ===================================== */
 export const onSocketEvent = async (
   event: string,
@@ -105,7 +122,6 @@ export const onSocketEvent = async (
   const s = await getSocket();
   if (!s) return () => {};
 
-  // ✅ prevent duplicate listener
   s.off(event, cb);
   s.on(event, cb);
 
@@ -115,19 +131,15 @@ export const onSocketEvent = async (
 };
 
 /* =====================================
-   APP RESUME HANDLER (SAFE)
+   APP STATE HANDLER (MODERN API)
 ===================================== */
 let currentState = AppState.currentState;
 
-const handleAppStateChange = async (nextState: string) => {
+const subscription = AppState.addEventListener("change", async (nextState) => {
   if (currentState.match(/inactive|background/) && nextState === "active") {
     console.log("🔄 App resumed → reconnect socket");
     await connectSocket();
   }
 
   currentState = nextState;
-};
-
-// ✅ prevent multiple listeners in dev reload
-AppState.removeEventListener?.("change", handleAppStateChange as any);
-AppState.addEventListener("change", handleAppStateChange);
+});
