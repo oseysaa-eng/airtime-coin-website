@@ -2,33 +2,54 @@ import mongoose from "mongoose";
 
 const WalletSchema = new mongoose.Schema(
 {
+  /* ================= USER ================= */
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true,
     unique: true,
-    index: true
+    index: true,
   },
 
-  balanceATC: { type: Number, default: 0 },
-  stakedATC: { type: Number, default: 0 },
+  /* ================= BALANCE ================= */
+  balanceATC: { type: Number, default: 0, min: 0 },
+  stakedATC: { type: Number, default: 0, min: 0 },
 
-  totalMinutes: { type: Number, default: 0 },
-  todayMinutes: { type: Number, default: 0 },
+  totalEarnedATC: { type: Number, default: 0, min: 0 },
 
-  totalEarnedATC: { type: Number, default: 0 },
+  /* ================= MINUTES ================= */
+  totalMinutes: { type: Number, default: 0, min: 0 },
+  todayMinutes: { type: Number, default: 0, min: 0 },
 
+  /* ================= DAILY BREAKDOWN ================= */
   dailyEarned: {
     ads: { type: Number, default: 0 },
     calls: { type: Number, default: 0 },
-    surveys: { type: Number, default: 0 }
+    surveys: { type: Number, default: 0 },
   },
 
+  /* ================= RESET CONTROL ================= */
   lastDailyReset: { type: Date, default: Date.now },
+
+  /* ================= SECURITY / TRACKING ================= */
+  lastEarningAt: { type: Date, default: null },
+  earningVelocity: { type: Number, default: 0 }, // mins per hour
+
+  /* ================= SYSTEM ================= */
+  version: { type: Number, default: 1 }, // future migrations
+
 },
 { timestamps: true }
 );
 
-export default mongoose.model("Wallet", WalletSchema);
+/* ================= INDEXES ================= */
 
+// 🔥 fast leaderboard queries
+WalletSchema.index({ totalMinutes: -1 });
+WalletSchema.index({ balanceATC: -1 });
 
+// 🔥 fraud detection
+WalletSchema.index({ lastEarningAt: -1 });
+
+export default mongoose.models.Wallet ||
+  mongoose.model("Wallet", WalletSchema);

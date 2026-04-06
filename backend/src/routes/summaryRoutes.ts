@@ -8,115 +8,124 @@ import Wallet from "../models/Wallet";
 import User from "../models/User";
 
 import { recoverTrust } from "../services/trustRecoveryService";
+import { resetDailyIfNeeded } from "../utils/resetDaily";
 
 const router = express.Router();
 
 router.get("/", auth, async (req: any, res) => {
-
   try {
-
     const userId = req.user.id;
 
-    /* USER */
-    const user = await User.findById(userId);
+    /* ================= PARALLEL FETCH ================= */
+    const [
+      user,
+      trust,
+      settings,
+      emission,
+      walletRaw,
+      recentTx,
+    ] = await Promise.all([
+      User.findById(userId).lean(),
+      recoverTrust(userId),
+      SystemSettings.findOne().lean(),
+      EmissionState.findOne().lean(),
+      Wallet.findOne({ userId }),
+      Transaction.find({ userId })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .lean(),
+    ]);
 
-    /* TRUST */
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-    const trust = await recoverTrust(userId);
+    /* ================= WALLET SAFE ================= */
+    let wallet = walletRaw;
 
+    if (!wallet) {
+      wallet = await Wallet.create({ userId });
+    }
+
+    // 🔥 APPLY DAILY RESET
+    resetDailyIfNeeded(wallet);
+    await wallet.save();
+
+    /* ================= SAFE OBJECTS ================= */
+    const safeSettings = settings || {};
+    const safeEmission = emission || {};
+
+    /* ================= TRUST ================= */
     let trustStatus: "good" | "reduced" | "limited" | "blocked" = "good";
 
-    if (trust.score < 80) trustStatus = "reduced";
-    if (trust.score < 60) trustStatus = "limited";
     if (trust.score < 40) trustStatus = "blocked";
+    else if (trust.score < 60) trustStatus = "limited";
+    else if (trust.score < 80) trustStatus = "reduced";
 
-    /* SYSTEM SETTINGS */
+    /* ================= WEEKLY ================= */
 
-    const settings =
-      (await SystemSettings.findOne()) ||
-      (await SystemSettings.create({}));
-
-    /* EMISSION */
-
-    const emission =
-      (await EmissionState.findOne()) ||
-      (await EmissionState.create({}));
-
-    /* WALLET */
-
-    const wallet =
-      (await Wallet.findOne({ userId })) ||
-      (await Wallet.create({ userId }));
-
-    /* TRANSACTIONS */
-
-    const recentTx = await Transaction.find({ userId })
-      .sort({ createdAt: -1 })
-      .limit(5);
-
-    /* WEEKLY CHART */
-
-    const weeklyMinutes = [0,0,0,0,0,0,0];
+    const weeklyMinutes = [0, 0, 0, 0, 0, 0, 0];
 
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 6);
 
-    const earned = await Transaction.find({
-      userId,
-      type: "EARN",
-      createdAt: { $gte: weekAgo },
+    const weeklyAgg = await Transaction.aggregate([
+      {
+        $match: {
+          userId: wallet.userId,
+          type: "EARN",
+          createdAt: { $gte: weekAgo },
+        },
+      },
+      {
+        $group: {
+          _id: { $dayOfWeek: "$createdAt" },
+          total: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    weeklyAgg.forEach((d: any) => {
+      const index = d._id === 1 ? 6 : d._id - 2;
+      weeklyMinutes[index] = d.total;
     });
 
-    earned.forEach(tx => {
-
-      const jsDay = new Date(tx.createdAt).getDay();
-
-      const index = jsDay === 0 ? 6 : jsDay - 1;
-
-      weeklyMinutes[index] += tx.amount || 0;
-
-    });
-
-    /* RESPONSE */
+    /* ================= RESPONSE ================= */
 
     res.json({
+      name: user.name || "User",
+      profileImage: user.profileImage || null,
 
-      name: user?.name || "User",
-      profileImage: user?.profileImage || null,
+      balance: wallet.balanceATC,
+      staked: wallet.stakedATC,
 
-      balance: wallet.balanceATC || 0,
-      staked: wallet.stakedATC || 0,
-
-      totalMinutes: wallet.totalMinutes || 0,
-      todayMinutes: wallet.todayMinutes || 0,
+      totalMinutes: wallet.totalMinutes,
+      todayMinutes: wallet.todayMinutes,
 
       weeklyMinutes,
       recentTx,
 
       trustStatus,
 
-      emissionMultiplier: emission.multiplier ?? 1,
-      emissionPhase: emission.phase ?? 0,
+      emissionMultiplier: safeEmission.multiplier ?? 1,
+      emissionPhase: safeEmission.phase ?? 0,
 
       beta: {
-        active: settings.beta?.active ?? false,
-        conversionEnabled: settings.beta?.showConversion ?? false,
-        withdrawalEnabled: settings.beta?.showWithdrawals ?? false,
-      }
-
+        active: safeSettings?.beta?.active ?? false,
+        conversionEnabled:
+          safeSettings?.beta?.showConversion ?? false,
+        withdrawalEnabled:
+          safeSettings?.beta?.showWithdrawals ?? false,
+      },
     });
 
   } catch (err) {
-
     console.error("SUMMARY ERROR:", err);
 
     res.status(500).json({
-      message: "Failed to load dashboard"
+      message: "Failed to load dashboard",
     });
-
   }
-
 });
 
 export default router;
-

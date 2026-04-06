@@ -1,25 +1,49 @@
+import mongoose from "mongoose";
 import CallSession from "../models/CallSession";
 import { runCallFraudChecks } from "./callFraudEngine";
 import { calculateCallReward } from "./callRewardService";
 import { creditUser } from "./creditService";
 import { notifyUser } from "./notifyUser";
-import { emitAdminEvent, pushMinutes } from "../sockets/socket";
+import {
+  emitAdminEvent,
+  pushMinutes,
+  pushWalletUpdate,
+} from "../sockets/socket";
 
-const MIN_DURATION = 30; // seconds
+const MIN_DURATION = 30;
 
 export const processCallEarning = async (sessionId: string, app?: any) => {
-  try {
-    const session = await CallSession.findOne({ sessionId });
+  const mongoSession = await mongoose.startSession();
 
-    // ✅ SAFETY: avoid duplicates
-    if (!session || session.status === "completed") return;
+  try {
+    mongoSession.startTransaction();
+
+    /* ================= LOCK SESSION ================= */
+    const session = await CallSession.findOneAndUpdate(
+      {
+        sessionId,
+        status: { $in: ["pending", "processing"] }, // 🔥 allow recovery
+      },
+      {
+        status: "processing",
+      },
+      { new: true, session: mongoSession }
+    );
+
+    if (!session) {
+      console.log("⚠️ Already processed:", sessionId);
+      await mongoSession.abortTransaction();
+      return;
+    }
 
     const duration = session.durationSeconds || 0;
 
     /* ================= REJECT SHORT ================= */
     if (duration < MIN_DURATION) {
       session.status = "rejected";
-      await session.save();
+      await session.save({ session: mongoSession });
+
+      await mongoSession.commitTransaction();
 
       emitAdminEvent("CALL_REJECTED", {
         sessionId,
@@ -38,17 +62,15 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
     });
 
     if (fraud.blocked) {
-      session.status = "blocked";
-      session.flagged = true;
-      session.riskScore = fraud.risk || 0;
-      await session.save();
+      session.status = "fraud";
+      session.trustScore = fraud.risk || 0;
 
-      console.log("🚫 Fraud blocked:", fraud.reason);
+      await session.save({ session: mongoSession });
+      await mongoSession.commitTransaction();
 
-      // 🔥 ADMIN ALERT
       emitAdminEvent("FRAUD_ALERT", {
         userId: session.userId,
-        type: fraud.reason || "FRAUD_DETECTED",
+        type: fraud.reason || "FRAUD",
         risk: fraud.risk,
         sessionId,
       });
@@ -61,7 +83,9 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
 
     if (minutes <= 0) {
       session.status = "rejected";
-      await session.save();
+      await session.save({ session: mongoSession });
+
+      await mongoSession.commitTransaction();
 
       emitAdminEvent("CALL_REJECTED", {
         sessionId,
@@ -72,24 +96,43 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
     }
 
     /* ================= CREDIT ================= */
-    const credit = await creditUser(session.userId, minutes, "CALL");
+    const credit = await creditUser(
+      session.userId,
+      minutes,
+      "CALL",
+      mongoSession // 🔥 pass session for atomic update
+    );
 
     /* ================= UPDATE SESSION ================= */
     session.status = "completed";
-    session.minutes = minutes;
-    session.riskScore = fraud.risk || 0;
+    session.creditedMinutes = minutes;
+    session.trustScore = fraud.risk || 0;
     session.endedAt = new Date();
-    await session.save();
+
+    await session.save({ session: mongoSession });
+
+    await mongoSession.commitTransaction();
 
     console.log("💰 Minutes credited:", minutes);
 
-    /* ================= REALTIME PUSH (USER APP) ================= */
+    /* ================= 🚀 REALTIME PUSH ================= */
+
+    const safePayload = {
+      balance: credit?.balance ?? 0,
+      minutes: credit?.minutes ?? 0,
+      atc: credit?.atc ?? 0,
+    };
+
+    // 🔥 Wallet sync
+    pushWalletUpdate(session.userId.toString(), safePayload);
+
+    // 🔥 Smooth animation event
     pushMinutes(session.userId.toString(), minutes, {
       type: "CALL",
       sessionId,
     });
 
-    /* ================= ADMIN LIVE UPDATE ================= */
+    /* ================= ADMIN ================= */
     emitAdminEvent("ADMIN_ANALYTICS_UPDATE", {
       type: "CALL_EARNING",
       userId: session.userId,
@@ -98,7 +141,7 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
       risk: fraud.risk || 0,
     });
 
-    /* ================= NOTIFY USER ================= */
+    /* ================= NOTIFY ================= */
     if (app) {
       await notifyUser(
         app,
@@ -109,14 +152,24 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
       );
     }
 
-  } catch (err) {
-    console.error("EARNING ERROR:", err);
+  } catch (err: any) {
+    await mongoSession.abortTransaction();
 
-    // 🔥 ADMIN ERROR VISIBILITY
+    console.error("❌ EARNING ERROR:", err);
+
+    // 🔥 RECOVERY: reset stuck session
+    await CallSession.findOneAndUpdate(
+      { sessionId, status: "processing" },
+      { status: "pending" }
+    );
+
     emitAdminEvent("SYSTEM_ERROR", {
       type: "CALL_EARNING_FAILED",
       sessionId,
       error: err.message,
     });
+
+  } finally {
+    mongoSession.endSession();
   }
 };
