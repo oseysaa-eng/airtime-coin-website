@@ -10,31 +10,24 @@ import connectDB from "./src/config/db";
 import { trustRecoveryJob } from "./src/jobs/trustRecoveryJob";
 import SystemSettings from "./src/models/SystemSettings";
 
-
 import { setupSocket } from "./src/sockets/socket";
 import { setupSupportSocket } from "./src/sockets/supportSocket";
 import { registerAdminEmitter } from "./src/utils/adminEmitter";
 import { apiLimiter } from "./src/middleware/rateLimiter";
 import { registerCallHandlers } from "./src/sockets/callHandlers";
 
-
-
-/* ───────────────────────── LOAD ENV ───────────────────────── */
-
+/* ───────── LOAD ENV ───────── */
 dotenv.config();
 
-/* ───────────────────────── INIT APP ───────────────────────── */
-
+/* ───────── INIT APP ───────── */
 const app = express();
 
-/* ───────────────────────── TRUST PROXY (IMPORTANT FOR VERCEL / NAMECHEAP) ───────────────────────── */
-
+/* ───────── TRUST PROXY ───────── */
 if (process.env.TRUST_PROXY === "true") {
   app.set("trust proxy", 1);
 }
 
-/* ───────────────────────── ENTERPRISE CORS CONFIG ───────────────────────── */
-
+/* ───────── CORS (CLEAN + SAFE FOR BETA) ───────── */
 const allowedOrigins = [
   "https://airtimecoin.africa",
   "https://www.airtimecoin.africa",
@@ -46,43 +39,31 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
-      console.warn("❌ Blocked by CORS:", origin);
-
-      return callback(new Error("Not allowed by CORS"));
+      console.warn("⚠️ Unknown origin:", origin);
+      return callback(null, true); // allow for beta
     },
-
     credentials: true,
   })
 );
 
-/* ───────────────────────── BODY PARSER ───────────────────────── */
-
+/* ───────── BODY PARSER ───────── */
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use("/api", apiLimiter);
 
-
-/* ───────────────────────── STATIC FILES ───────────────────────── */
-
+/* ───────── STATIC FILES ───────── */
 app.use(
   "/uploads",
   express.static(path.join(process.cwd(), "uploads"))
 );
 
-/* ───────────────────────── CONNECT DATABASE ───────────────────────── */
+/* ───────── ROUTES IMPORT ───────── */
 
-connectDB();
-
-/* ───────────────────────── IMPORT ROUTES ───────────────────────── */
-
-// ADMIN ROUTES
-
+// ADMIN
 import adminRoutes from "./src/routes/admin/adminRoutes";
 import adminBetaRoutes from "./src/routes/admin/adminBetaRoutes";
 import adminTreasuryRoutes from "./src/routes/admin/adminTreasuryRoutes";
@@ -91,9 +72,7 @@ import utilityPricingRoutes from "./src/routes/admin/utilityPricingRoutes";
 import adminEmissionRoutes from "./src/routes/admin/adminEmissionRoutes";
 import adminPriceRoutes from "./src/routes/admin/adminPriceRoutes";
 
-
-// USER ROUTES
-
+// USER
 import authRoutes from "./src/routes/authRoutes";
 import userRoutes from "./src/routes/userRoutes";
 import walletRoutes from "./src/routes/walletRoutes";
@@ -121,8 +100,7 @@ import postbackRoutes from "./src/routes/postbackRoutes";
 import profileRoutes from "./src/routes/profileRoutes";
 import pushRoutes from "./src/routes/pushRoutes";
 
-/* ───────────────────────── HEALTH CHECK ───────────────────────── */
-
+/* ───────── HEALTH CHECK ───────── */
 app.get("/", (_req, res) => {
   res.json({
     status: "online",
@@ -131,12 +109,9 @@ app.get("/", (_req, res) => {
   });
 });
 
-
-
-/* ───────────────────────── REGISTER ROUTES ───────────────────────── */
+/* ───────── REGISTER ROUTES ───────── */
 
 // ADMIN
-
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/beta", adminBetaRoutes);
 app.use("/api/admin/treasury", adminTreasuryRoutes);
@@ -145,9 +120,7 @@ app.use("/api/admin/utility/pricing", utilityPricingRoutes);
 app.use("/api/admin/emission", adminEmissionRoutes);
 app.use("/api/admin/price", adminPriceRoutes);
 
-
 // USER
-
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/wallet", walletRoutes);
@@ -176,8 +149,7 @@ app.use("/api/push", pushRoutes);
 
 app.use("/postback", postbackRoutes);
 
-/* ───────────────────────── GLOBAL ERROR HANDLER ───────────────────────── */
-
+/* ───────── ERROR HANDLER ───────── */
 app.use((err: any, req: any, res: any, _next: any) => {
   console.error("❌ SERVER ERROR:", {
     path: req.path,
@@ -185,20 +157,14 @@ app.use((err: any, req: any, res: any, _next: any) => {
     message: err?.message,
   });
 
-  res.status(500).json({
-    message: "Internal server error",
-  });
+  res.status(500).json({ message: "Internal server error" });
 });
 
-
-/* ───────────────────────── CREATE SERVER ───────────────────────── */
-
+/* ───────── SERVER SETUP ───────── */
 const PORT = Number(process.env.PORT) || 5000;
-
 const server = http.createServer(app);
 
-/* ───────────────────────── SOCKET.IO CONFIG ───────────────────────── */
-
+/* ───────── SOCKET.IO ───────── */
 const io = new IOServer(server, {
   cors: {
     origin: allowedOrigins,
@@ -206,7 +172,6 @@ const io = new IOServer(server, {
   },
 });
 
-/* ================= AUTH ================= */
 io.use((socket: any, next) => {
   try {
     const token = socket.handshake.auth?.token;
@@ -221,39 +186,53 @@ io.use((socket: any, next) => {
   }
 });
 
-
-
-/* ================= CONNECTION ================= */
 io.on("connection", (socket: any) => {
-  console.log("🟢 Socket connected:", socket.id);
-  console.log("👤 User:", socket.userId);
+  console.log("🟢 Socket:", socket.id);
 
-  // ✅ REGISTER CALL ENGINE HERE
   registerCallHandlers(socket);
 
   socket.on("disconnect", () => {
-    console.log("🔴 User disconnected:", socket.userId);
+    console.log("🔴 Disconnected:", socket.userId);
   });
 });
-
-
-/* ───────────────────────── INITIALIZE SOCKETS ───────────────────────── */
 
 setupSocket(io);
 setupSupportSocket(io);
 registerAdminEmitter(io);
 
-/* ───────────────────────── START SERVER ───────────────────────── */
+/* ───────── START SERVER ───────── */
+const startServer = async () => {
+  try {
+    console.log("ENV CHECK:", {
+      mongo: process.env.MONGO_URI ? "OK" : "MISSING",
+      jwt: process.env.JWT_SECRET ? "OK" : "MISSING",
+    });
 
-server.listen(PORT, "0.0.0.0", async () => {
-  console.log(`🚀 ATC Backend running on port ${PORT}`);
+    await connectDB();
 
-  const exists = await SystemSettings.findOne();
+    server.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 ATC Backend running on port ${PORT}`);
+    });
 
-  if (!exists) {
-    await SystemSettings.create({});
-    console.log("✅ SystemSettings initialized");
+    // 🔥 NON-BLOCKING INIT
+    setTimeout(async () => {
+      try {
+        const exists = await SystemSettings.findOne();
+        if (!exists) {
+          await SystemSettings.create({});
+          console.log("✅ SystemSettings initialized");
+        }
+      } catch {
+        console.log("⚠️ SystemSettings init skipped");
+      }
+    }, 2000);
+
+    setInterval(trustRecoveryJob, 24 * 60 * 60 * 1000);
+
+  } catch (err) {
+    console.error("❌ SERVER START FAILED:", err);
+    process.exit(1);
   }
+};
 
-  setInterval(trustRecoveryJob, 24 * 60 * 60 * 1000);
-});
+startServer();
