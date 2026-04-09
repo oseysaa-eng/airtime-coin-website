@@ -18,7 +18,7 @@ export default function SupportScreen() {
       <TouchableOpacity
         style={styles.row}
         onPress={() =>
-          Linking.openURL("https://wa.me/233XXXXXXXXX")
+          Linking.openURL("https://whatsapp.com/channel/0029VbCeOFLC1Fu6vOJAM92y")
         }
       >
         <Ionicons name="logo-whatsapp" size={22} color="#22c55e" />

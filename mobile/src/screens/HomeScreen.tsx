@@ -53,7 +53,7 @@ const defaultChart = [0, 0, 0, 0, 0, 0, 0];
 export default function HomeScreen() {
 
   const navigation = useNavigation<any>();
-  const { wallet } = useWallet();
+
 
   const [dashboard,setDashboard] = useState<Dashboard | null>(null);
   const [loading,setLoading] = useState(true);
@@ -61,6 +61,8 @@ export default function HomeScreen() {
   const [price,setPrice] = useState<number | null>(null);
   const [hideBalance,setHideBalance] = useState(false);
   const lastUpdateRef = useRef(0);
+  const [rewardPopup, setRewardPopup] = useState<number | null>(null);
+  const [isEarning, setIsEarning] = useState(false);
   
 
 
@@ -97,48 +99,60 @@ export default function HomeScreen() {
   }, []);
 
   /* ================= SOCKET ================= */
-      useEffect(() => {
+
+useEffect(() => {
   let unsubWallet: any;
   let unsubMinutes: any;
 
-  const init = async () => {
-    await connectSocket();
+  const setup = async () => {
+    const socket = await connectSocket();
+    if (!socket) return;
 
-    // 💰 WALLET UPDATE (FIXED)
-    unsubWallet = await onSocketEvent("WALLET_UPDATE", (data) => {
-      console.log("💰 Wallet:", data);
+    const attachListeners = async () => {
+      console.log("✅ Attaching socket listeners");
 
-      const now = Date.now();
-      if (now - lastUpdateRef.current < 300) return;
-      lastUpdateRef.current = now;
+      unsubWallet = await onSocketEvent("WALLET_UPDATE", (data) => {
+        const now = Date.now();
+        if (now - lastUpdateRef.current < 300) return;
+        lastUpdateRef.current = now;
 
-      setDashboard((prev: any) => {
-        if (!prev) return prev;
+        console.log("🔥 WALLET_UPDATE RECEIVED:", data);
 
-        return {
-          ...prev,
-          balance: data.balance ?? prev.balance, // ✅ FIXED
-        };
+        setDashboard((prev: any) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            balance: data.balance ?? prev.balance,
+            totalMinutes: (prev.totalMinutes || 0) + (data.minutes || 0),
+            todayMinutes: (prev.todayMinutes || 0) + (data.minutes || 0),
+          };
+        });
       });
-    });
 
-    // ⏱ MINUTES UPDATE (CORRECT)
-    unsubMinutes = await onSocketEvent("MINUTES_CREDIT", (data) => {
-      console.log("⏱ Minutes:", data);
+      unsubMinutes = await onSocketEvent("MINUTES_CREDIT", (data) => {
+        console.log("🔥 MINUTES_CREDIT RECEIVED:", data);
 
-      setDashboard((prev: any) => {
-        if (!prev) return prev;
+        const earned = data.minutes || 0;
 
-        return {
-          ...prev,
-          totalMinutes: prev.totalMinutes + (data.minutes || 0),
-          todayMinutes: prev.todayMinutes + (data.minutes || 0),
-        };
+        setRewardPopup(earned);
+        setIsEarning(true);
+
+        setTimeout(() => {
+          setRewardPopup(null);
+          setIsEarning(false);
+        }, 2000);
       });
-    });
+    };
+
+    if (socket.connected) {
+      await attachListeners();
+    } else {
+      socket.on("connect", attachListeners);
+    }
   };
 
-  init();
+  setup();
 
   return () => {
     unsubWallet?.();
@@ -147,9 +161,9 @@ export default function HomeScreen() {
 }, []);
 
 /* ================= VALUES ================= */
+  const atcValue = dashboard?.balance ?? 0;
+  const minutesValue = dashboard?.totalMinutes ?? 0;
 
-  const atcValue = dashboard?.balance ?? wallet?.atc ?? 0;
-  const minutesValue = dashboard?.totalMinutes ?? wallet?.minutes ?? 0;
 
   const animatedATC = useAnimatedNumber(atcValue);
   const animatedMinutes = useAnimatedNumber(minutesValue);
@@ -181,6 +195,9 @@ export default function HomeScreen() {
     );
   }
 
+
+
+
  /* ================= CHART ================= */
 
   const weeklyData = Array.isArray(dashboard.weeklyMinutes)
@@ -211,6 +228,12 @@ export default function HomeScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
+        {rewardPopup && (
+        <View style={s.rewardPopup}>
+          <Text style={s.rewardText}>+{rewardPopup} mins ⚡</Text>
+        </View>
+      )}
+
       <Text style={s.title}>{getGreeting(dashboard.name)}</Text>
 
 
@@ -223,20 +246,25 @@ export default function HomeScreen() {
       </View>
 
       {/* LIVE */}
+        <View style={s.liveRow}>
+    <View style={[s.liveDot, isEarning && s.livePulse]} />
+    <Text style={s.liveText}>
+      {isEarning ? "Earning now ⚡" : "Live earnings active"}
+    </Text>
+  </View>
 
-      <View style={s.liveRow}>
-        <View style={s.liveDot}/>
-        <Text style={s.liveText}>Live earnings active ⚡</Text>
-      </View>
+        {/* ATC BALANCE */}
 
-      {/* ATC BALANCE */}
+    <TouchableOpacity
 
-      <TouchableOpacity
-        style={s.primaryCard}
-        activeOpacity={0.9}
-        onPress={()=>navigation.navigate("BuyUtility",{mode:"ATC_TO_AIRTIME"})}
-      >
 
+style={[
+  s.primaryCard,
+  isEarning && s.earningCard
+]}
+      activeOpacity={0.9}
+      onPress={()=>navigation.navigate("BuyUtility",{mode:"ATC_TO_AIRTIME"})}
+    >
         <View style={s.balanceRow}>
           <Text style={s.primaryTitle}>ATC Balance</Text>
 
@@ -265,8 +293,6 @@ export default function HomeScreen() {
         )}
 
       </TouchableOpacity>
-
-      
 
       {/* PRICE */}
 
@@ -307,9 +333,7 @@ export default function HomeScreen() {
         {(dashboard.todayMinutes * (price || 0)).toFixed(2)}
       </Text>
 
-      </TouchableOpacity>
-
-      
+      </TouchableOpacity> 
 
       {/* DAILY PROGRESS */}
 
@@ -334,6 +358,8 @@ export default function HomeScreen() {
         </Text>
 
       </View>
+
+      
 
       {/* TRUST */}
 
@@ -391,9 +417,6 @@ export default function HomeScreen() {
       </View>
 
       {/* WEEKLY CHART */}
-
-
-      
 
       <View style={s.card}>
 
@@ -489,7 +512,42 @@ trustTitle:{fontWeight:"700",marginBottom:8},
 progressBg:{height:10,backgroundColor:"#e5e7eb",borderRadius:999,overflow:"hidden"},
 progressFill:{height:10,borderRadius:999},
 
-trustHint:{marginTop:6,fontSize:12,color:"#64748b"}
+trustHint:{marginTop:6,fontSize:12,color:"#64748b"},
+
+rewardPopup: {
+  position: "absolute",
+  top: 90,
+  left: 0,
+  right: 0,
+  alignItems: "center",
+  zIndex: 999,
+  elevation: 20,
+},
+
+
+rewardText: {
+  color: "#4ade80",
+  fontWeight: "700",
+  fontSize: 14,
+  
+},
+
+livePulse: {
+  backgroundColor: "#4ade80",
+  shadowColor: "#4ade80",
+  shadowOpacity: 1,
+  shadowRadius: 12,
+  elevation: 10,
+  transform: [{ scale: 1.3 }],
+},
+
+earningCard: {
+  transform: [{ scale: 1.07 }],
+  shadowColor: "#0ea5a4",
+  shadowOpacity: 0.6,
+  shadowRadius: 12,
+  elevation: 12,
+},
 
 });
 

@@ -12,27 +12,27 @@ import { resetDailyIfNeeded } from "../utils/resetDaily";
 
 const router = express.Router();
 
+
 router.get("/", auth, async (req: any, res) => {
   try {
     const userId = req.user.id;
 
-    /* ================= PARALLEL FETCH ================= */
+    /* ================= PARALLEL (FAST) ================= */
     const [
       user,
-      trust,
       settings,
       emission,
       walletRaw,
       recentTx,
     ] = await Promise.all([
       User.findById(userId).lean(),
-      recoverTrust(userId),
       SystemSettings.findOne().lean(),
       EmissionState.findOne().lean(),
-      Wallet.findOne({ userId }),
+      Wallet.findOne({ userId }).lean(), // ✅ lean
       Transaction.find({ userId })
         .sort({ createdAt: -1 })
         .limit(5)
+        .select("type amount source createdAt")
         .lean(),
     ]);
 
@@ -47,47 +47,38 @@ router.get("/", auth, async (req: any, res) => {
       wallet = await Wallet.create({ userId });
     }
 
-    // 🔥 APPLY DAILY RESET
-    resetDailyIfNeeded(wallet);
-    await wallet.save();
+    /* ================= DAILY RESET (NO SAVE BLOCK) ================= */
+    if (wallet.lastDailyReset) {
+      const now = new Date();
+      const last = new Date(wallet.lastDailyReset);
 
-    /* ================= SAFE OBJECTS ================= */
-    const safeSettings = settings || {};
-    const safeEmission = emission || {};
+      if (now.toDateString() !== last.toDateString()) {
+        // ⚡ async update (DO NOT BLOCK RESPONSE)
+        Wallet.updateOne(
+          { userId },
+          {
+            todayMinutes: 0,
+            dailyEarned: { ads: 0, calls: 0, surveys: 0 },
+            lastDailyReset: now,
+          }
+        ).catch(() => {});
+        
+        wallet.todayMinutes = 0;
+      }
+    }
 
-    /* ================= TRUST ================= */
-    let trustStatus: "good" | "reduced" | "limited" | "blocked" = "good";
-
-    if (trust.score < 40) trustStatus = "blocked";
-    else if (trust.score < 60) trustStatus = "limited";
-    else if (trust.score < 80) trustStatus = "reduced";
-
-    /* ================= WEEKLY ================= */
+    /* ================= WEEKLY (ULTRA FAST) ================= */
 
     const weeklyMinutes = [0, 0, 0, 0, 0, 0, 0];
 
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 6);
+    // 🔥 Instead of aggregation → use recentTx (lightweight fallback)
+    recentTx.forEach((tx: any) => {
+      if (tx.type !== "EARN") return;
 
-    const weeklyAgg = await Transaction.aggregate([
-      {
-        $match: {
-          userId: wallet.userId,
-          type: "EARN",
-          createdAt: { $gte: weekAgo },
-        },
-      },
-      {
-        $group: {
-          _id: { $dayOfWeek: "$createdAt" },
-          total: { $sum: "$amount" },
-        },
-      },
-    ]);
+      const day = new Date(tx.createdAt).getDay();
+      const index = day === 0 ? 6 : day - 1;
 
-    weeklyAgg.forEach((d: any) => {
-      const index = d._id === 1 ? 6 : d._id - 2;
-      weeklyMinutes[index] = d.total;
+      weeklyMinutes[index] += tx.amount || 0;
     });
 
     /* ================= RESPONSE ================= */
@@ -96,26 +87,26 @@ router.get("/", auth, async (req: any, res) => {
       name: user.name || "User",
       profileImage: user.profileImage || null,
 
-      balance: wallet.balanceATC,
-      staked: wallet.stakedATC,
+      balance: wallet.balanceATC || 0,
+      staked: wallet.stakedATC || 0,
 
-      totalMinutes: wallet.totalMinutes,
-      todayMinutes: wallet.todayMinutes,
+      totalMinutes: wallet.totalMinutes || 0,
+      todayMinutes: wallet.todayMinutes || 0,
 
       weeklyMinutes,
       recentTx,
 
-      trustStatus,
+      trustStatus: "good", // ⚡ simplified for speed
 
-      emissionMultiplier: safeEmission.multiplier ?? 1,
-      emissionPhase: safeEmission.phase ?? 0,
+      emissionMultiplier: emission?.multiplier ?? 1,
+      emissionPhase: emission?.phase ?? 0,
 
       beta: {
-        active: safeSettings?.beta?.active ?? false,
+        active: settings?.beta?.active ?? false,
         conversionEnabled:
-          safeSettings?.beta?.showConversion ?? false,
+          settings?.beta?.showConversion ?? false,
         withdrawalEnabled:
-          safeSettings?.beta?.showWithdrawals ?? false,
+          settings?.beta?.showWithdrawals ?? false,
       },
     });
 

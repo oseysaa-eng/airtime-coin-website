@@ -10,7 +10,7 @@ import {
 import io from "socket.io-client";
 import api from "../../api/api";
 
-const socket = io("http://192.168.1.217:5000");
+const socket = io("https://atc-backend-cn4f.onrender.com");
 
 export default function SupportChatScreen() {
   const [messages, setMessages] = useState<any[]>([]);
