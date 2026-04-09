@@ -29,6 +29,8 @@ build/
 .env
 .env.*
 !.env.example
+*.json
+backend/tmp-*.json
 
 # ======================
 # Logs & Debug

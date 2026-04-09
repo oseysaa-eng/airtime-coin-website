@@ -33,237 +33,146 @@ function resetDailyPool(pool: any) {
   }
 }
 
+
 /*
   POST /api/ads/complete
   Reward user after watching ad
 */
 
 router.post("/complete", auth, async (req: any, res) => {
-
   try {
-
     const userId = req.user.id;
+    const { adRewardId, network, signature } = req.body;
 
-    const {
-      adRewardId,
-      network,
-      signature
-    } = req.body;
-
-    if (!adRewardId)
-      return res.status(400).json({
-        message: "Missing adRewardId"
-      });
-
-    /* ---------------------------
-       BETA: signature disabled
-    --------------------------- */
-
-    if (signature && !verifyAdSignature(req.body, signature)) {
-      console.log("⚠️ Invalid ad signature (ignored in beta)");
+    if (!adRewardId) {
+      return res.status(400).json({ message: "Missing adRewardId" });
     }
 
-    /* ---------------------------
-       DUPLICATE PROTECTION
-    --------------------------- */
-
-    const duplicate = await AdReward.findOne({ adRewardId });
-
-    if (duplicate)
+    /* ================= DUPLICATE (FAST CHECK) ================= */
+    const exists = await AdReward.exists({ adRewardId });
+    if (exists) {
       return res.json({
         success: true,
         creditedMinutes: 0,
-        duplicate: true
-      });
-
-    /* ---------------------------
-       SYSTEM INCIDENT MODE
-    --------------------------- */
-
-    const settings = await SystemSettings.findOne();
-
-    if (settings?.incidentMode?.active)
-      return res.status(403).json({
-        message: "System temporarily unavailable"
-      });
-
-    /* ---------------------------
-       REWARD POOL
-    --------------------------- */
-
-    let pool = await RewardPool.findOne({ type: "ADS" });
-
-    if (!pool) {
-      pool = await RewardPool.create({
-        type: "ADS",
-        paused: false
+        duplicate: true,
       });
     }
 
-    if (pool.paused)
-      return res.status(403).json({
-        message: "Ads paused"
-      });
+    /* ================= PARALLEL FETCH ================= */
+    const [settings, pool, trust, stats] = await Promise.all([
+      SystemSettings.findOne().lean(),
+      RewardPool.findOne({ type: "ADS" }).lean(),
+      UserTrust.findOne({ userId }).lean(),
+      UserDailyStats.findOne({
+        userId,
+        date: new Date().toISOString().slice(0, 10),
+      }).lean(),
+    ]);
 
-    /* ---------------------------
-       DAILY BUDGET RESET
-    --------------------------- */
+    /* ================= INCIDENT MODE ================= */
+    if (settings?.incidentMode?.active) {
+      return res.status(403).json({ message: "System unavailable" });
+    }
 
-    resetDailyPool(pool);
+    /* ================= TRUST ================= */
+    const trustScore = trust?.score ?? 100;
 
-    /* ---------------------------
-       TRUST CHECK
-    --------------------------- */
-
-    const trust =
-      (await UserTrust.findOne({ userId })) ||
-      (await UserTrust.create({ userId }));
-
-    if (trust.score < 40)
-      return res.status(403).json({
-        message: "Trust blocked"
-      });
-
-    /* ---------------------------
-       TRUST MULTIPLIER
-    --------------------------- */
+    if (trustScore < 40) {
+      return res.status(403).json({ message: "Trust blocked" });
+    }
 
     let multiplier = 1;
+    if (trustScore < 80) multiplier = 0.75;
+    if (trustScore < 60) multiplier = 0.4;
 
-    if (trust.score < 80) multiplier = 0.75;
-    if (trust.score < 60) multiplier = 0.4;
+    /* ================= REWARD ================= */
+    const baseReward = await getDynamicReward();
+    const creditedMinutes = Math.floor(baseReward * multiplier);
 
-    /* ---------------------------
-       SERVER CONTROLLED REWARD
-    --------------------------- */
-
-    const REWARD_MINUTES = await getDynamicReward();
-
-    const creditedMinutes =
-      Math.floor(REWARD_MINUTES * multiplier);
-
-    if (creditedMinutes <= 0)
-      return res.json({
-        success: true,
-        creditedMinutes: 0
-      });
-
-    /* ---------------------------
-       GLOBAL REWARD BUDGET
-    --------------------------- */
-
-    if (pool.spentTodayATC + creditedMinutes > pool.dailyLimitATC)
-      return res.status(403).json({
-        message: "Daily reward budget exhausted"
-      });
-
-    /* ---------------------------
-       DAILY STATS
-    --------------------------- */
-
-    const today = new Date().toISOString().slice(0, 10);
-
-    let stats =
-      await UserDailyStats.findOne({ userId, date: today });
-
-    if (!stats) {
-      stats = await UserDailyStats.create({
-        userId,
-        date: today,
-        adsWatched: 0,
-        minutesEarned: 0,
-        lastAdAt: null
-      });
+    if (creditedMinutes <= 0) {
+      return res.json({ success: true, creditedMinutes: 0 });
     }
 
-    /* ---------------------------
-       AD COOLDOWN
-    --------------------------- */
-
-    if (stats.lastAdAt) {
-
-      const diff = Date.now() - stats.lastAdAt.getTime();
-
-      if (diff < 60 * 1000)
-        return res.status(429).json({
-          message: "Please wait before next ad"
-        });
-
+    /* ================= LIMITS ================= */
+    if (stats?.adsWatched >= 10) {
+      return res.status(403).json({ message: "Daily limit reached" });
     }
 
-    /* ---------------------------
-       DAILY USER LIMIT
-    --------------------------- */
+    if (stats?.lastAdAt) {
+      const diff = Date.now() - new Date(stats.lastAdAt).getTime();
+      if (diff < 60000) {
+        return res.status(429).json({ message: "Wait before next ad" });
+      }
+    }
 
-    if (stats.adsWatched >= 10)
-      return res.status(403).json({
-        message: "Daily ad limit reached"
-      });
+    if (
+      pool &&
+      pool.spentTodayATC + creditedMinutes > pool.dailyLimitATC
+    ) {
+      return res.status(403).json({ message: "Budget exhausted" });
+    }
 
-    /* ---------------------------
-       REWARD ENGINE
-    --------------------------- */
-
-    const io = req.app.get("io");
-
-    await rewardEngine({
-      userId,
-      minutes: creditedMinutes,
-      source: "ADS",
-      meta: { network, adRewardId },
-      io
-    });
-
-    await addMinedMinutes(creditedMinutes);
-
-    /* ---------------------------
-       UPDATE USER STATS
-    --------------------------- */
-
-    stats.adsWatched += 1;
-    stats.minutesEarned += creditedMinutes;
-    stats.lastAdAt = new Date();
-
-    await stats.save();
-
-    /* ---------------------------
-       UPDATE GLOBAL POOL
-    --------------------------- */
-
-    pool.spentTodayATC += creditedMinutes;
-
-    await pool.save();
-
-    /* ---------------------------
-       LOG REWARD
-    --------------------------- */
-
-    await AdReward.create({
-      userId,
-      adRewardId,
-      network,
-      rewardMinutes: creditedMinutes
-    });
-
-    /* ---------------------------
-       SUCCESS RESPONSE
-    --------------------------- */
-
+    /* ================= 🚀 INSTANT RESPONSE ================= */
     res.json({
       success: true,
-      creditedMinutes
+      creditedMinutes,
     });
+
+    /* ================= 🔥 BACKGROUND PROCESS ================= */
+    (async () => {
+      try {
+        const io = req.app.get("io");
+
+        await rewardEngine({
+          userId,
+          minutes: creditedMinutes,
+          source: "ADS",
+          meta: { network, adRewardId },
+          io,
+        });
+
+        await addMinedMinutes(creditedMinutes);
+
+        await Promise.all([
+          // update stats
+          UserDailyStats.updateOne(
+            { userId, date: new Date().toISOString().slice(0, 10) },
+            {
+              $inc: {
+                adsWatched: 1,
+                minutesEarned: creditedMinutes,
+              },
+              $set: { lastAdAt: new Date() },
+            },
+            { upsert: true }
+          ),
+
+          // update pool
+          RewardPool.updateOne(
+            { type: "ADS" },
+            { $inc: { spentTodayATC: creditedMinutes } }
+          ),
+
+          // log reward
+          AdReward.create({
+            userId,
+            adRewardId,
+            network,
+            rewardMinutes: creditedMinutes,
+          }),
+        ]);
+      } catch (err) {
+        console.error("⚠️ Background ad processing error:", err);
+      }
+    })();
 
   } catch (err) {
-
-    console.error("ADS REWARD ERROR:", err);
+    console.error("ADS ERROR:", err);
 
     res.status(500).json({
-      message: "Ad reward failed"
+      message: "Ad reward failed",
     });
-
   }
-
 });
 
 export default router;
