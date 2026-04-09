@@ -11,18 +11,23 @@ const connectDB = async () => {
       throw new Error("❌ MONGO_URI is missing");
     }
 
-    // 🔥 IMPORTANT: disable buffering (no more 10s hang)
+    console.log("🔌 Connecting to MongoDB...");
+
+    // 🔥 Disable buffering (prevents hanging queries)
     mongoose.set("bufferCommands", false);
 
-    await mongoose.connect(uri);
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 5000, // fail fast if DB unreachable
+      socketTimeoutMS: 45000,        // keep connection stable
+    });
 
     console.log("✅ MongoDB connected");
 
-  } catch (err) {
-    console.error("❌ MongoDB connection failed:", err);
+  } catch (err: any) {
+    console.error("❌ MongoDB connection failed:", err?.message || err);
 
-    // 🔥 CRITICAL: stop server completely
-    throw err;
+    // 🔥 HARD FAIL (prevents fake startup)
+    process.exit(1);
   }
 };
 
