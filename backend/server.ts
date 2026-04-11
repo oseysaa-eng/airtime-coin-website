@@ -6,7 +6,7 @@ import path from "path";
 import { Server as IOServer } from "socket.io";
 import helmet from "helmet";
 import mongoSanitize from "express-mongo-sanitize";
-import xss from "xss-clean";
+
 
 import connectDB from "./src/config/db";
 import { trustRecoveryJob } from "./src/jobs/trustRecoveryJob";
@@ -30,8 +30,9 @@ if (process.env.TRUST_PROXY === "true") {
 
 /* ───────── SECURITY MIDDLEWARE ───────── */
 app.use(helmet());
-app.use(mongoSanitize());
-app.use(xss());
+app.use(mongoSanitize({ replaceWith: "_",}));
+
+
 
 /* ───────── REQUEST LOGGER (DEBUGGING) ───────── */
 app.use((req, _res, next) => {
