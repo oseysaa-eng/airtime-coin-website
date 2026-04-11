@@ -14,29 +14,10 @@ import { addMinedMinutes } from "../services/emissionTracker";
 
 const router = express.Router();
 
-/* ----------------------------------
-   DAILY POOL RESET HELPER
----------------------------------- */
-function resetDailyPool(pool: any) {
+/* ================= DATE HELPER ================= */
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
-  const now = new Date();
-  const last = new Date(pool.lastReset);
-
-  if (
-    now.getUTCDate() !== last.getUTCDate() ||
-    now.getUTCMonth() !== last.getUTCMonth() ||
-    now.getUTCFullYear() !== last.getUTCFullYear()
-  ) {
-    pool.spentTodayATC = 0;
-    pool.lastReset = now;
-  }
-}
-
-
-/*
-  POST /api/ads/complete
-  Reward user after watching ad
-*/
+/* ================= ROUTE ================= */
 router.post("/complete", auth, async (req: any, res) => {
   try {
     const userId = req.user.id;
@@ -46,9 +27,14 @@ router.post("/complete", auth, async (req: any, res) => {
       return res.status(400).json({ message: "Missing adRewardId" });
     }
 
-    /* ================= DUPLICATE (FAST CHECK) ================= */
-    const exists = await AdReward.exists({ adRewardId });
-    if (exists) {
+    /* ================= 🔐 SIGNATURE CHECK ================= */
+    if (signature && !verifyAdSignature(signature, adRewardId)) {
+      return res.status(403).json({ message: "Invalid signature" });
+    }
+
+    /* ================= 🚀 ATOMIC DUPLICATE CHECK ================= */
+    const existing = await AdReward.findOne({ adRewardId }).lean();
+    if (existing) {
       return res.json({
         success: true,
         creditedMinutes: 0,
@@ -57,13 +43,13 @@ router.post("/complete", auth, async (req: any, res) => {
     }
 
     /* ================= PARALLEL FETCH ================= */
-    const [settings, pool, trust, stats] = await Promise.all([
+    const [settings, poolDoc, trust, stats] = await Promise.all([
       SystemSettings.findOne().lean(),
-      RewardPool.findOne({ type: "ADS" }).lean(),
+      RewardPool.findOne({ type: "ADS" }), // 🔥 NOT lean (we may update)
       UserTrust.findOne({ userId }).lean(),
       UserDailyStats.findOne({
         userId,
-        date: new Date().toISOString().slice(0, 10),
+        date: todayStr(),
       }).lean(),
     ]);
 
@@ -103,11 +89,23 @@ router.post("/complete", auth, async (req: any, res) => {
       }
     }
 
-    if (
-      pool &&
-      pool.spentTodayATC + creditedMinutes > pool.dailyLimitATC
-    ) {
-      return res.status(403).json({ message: "Budget exhausted" });
+    /* ================= POOL CHECK ================= */
+    if (poolDoc) {
+      const now = new Date();
+      const last = new Date(poolDoc.lastReset);
+
+      // 🔥 Reset daily pool
+      if (now.toDateString() !== last.toDateString()) {
+        poolDoc.spentTodayATC = 0;
+        poolDoc.lastReset = now;
+      }
+
+      if (
+        poolDoc.spentTodayATC + creditedMinutes >
+        poolDoc.dailyLimitATC
+      ) {
+        return res.status(403).json({ message: "Budget exhausted" });
+      }
     }
 
     /* ================= 🚀 INSTANT RESPONSE ================= */
@@ -132,9 +130,9 @@ router.post("/complete", auth, async (req: any, res) => {
         await addMinedMinutes(creditedMinutes);
 
         await Promise.all([
-          // update stats
+          /* UPDATE STATS */
           UserDailyStats.updateOne(
-            { userId, date: new Date().toISOString().slice(0, 10) },
+            { userId, date: todayStr() },
             {
               $inc: {
                 adsWatched: 1,
@@ -145,13 +143,14 @@ router.post("/complete", auth, async (req: any, res) => {
             { upsert: true }
           ),
 
-          // update pool
-          RewardPool.updateOne(
-            { type: "ADS" },
-            { $inc: { spentTodayATC: creditedMinutes } }
-          ),
+          /* UPDATE POOL */
+          poolDoc
+            ? poolDoc.updateOne({
+                $inc: { spentTodayATC: creditedMinutes },
+              })
+            : Promise.resolve(),
 
-          // log reward
+          /* LOG REWARD (FINAL DUPLICATE GUARD) */
           AdReward.create({
             userId,
             adRewardId,
