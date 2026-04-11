@@ -1,15 +1,14 @@
 import dotenv from "dotenv";
-dotenv.config(); // ✅ MUST BE FIRST
+dotenv.config();
 
 import cors from "cors";
 import express from "express";
 import http from "http";
 import path from "path";
 import helmet from "helmet";
-import mongoSanitize from "express-mongo-sanitize";
 import { Server as IOServer } from "socket.io";
 
-/* 🔥 LOAD FIREBASE AFTER ENV */
+/* 🔥 LOAD FIREBASE */
 import "./src/config/firebase";
 
 /* CORE */
@@ -63,7 +62,7 @@ import postbackRoutes from "./src/routes/postbackRoutes";
 import profileRoutes from "./src/routes/profileRoutes";
 import pushRoutes from "./src/routes/pushRoutes";
 
-/* ================= INIT APP ================= */
+/* ================= INIT ================= */
 
 const app = express();
 
@@ -79,22 +78,33 @@ app.use(helmet());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use(
-  mongoSanitize({
-    replaceWith: "_",
-    allowDots: true, // 🔥 FIX CRASH
-  })
-);
+/* ✅ CUSTOM SANITIZER (SAFE) */
+app.use((req: any, _res, next) => {
+  const sanitize = (obj: any) => {
+    if (!obj) return;
+
+    for (const key in obj) {
+      if (key.includes("$") || key.includes(".")) {
+        delete obj[key];
+      } else if (typeof obj[key] === "object") {
+        sanitize(obj[key]);
+      }
+    }
+  };
+
+  sanitize(req.body);
+  sanitize(req.params);
+
+  next();
+});
 
 /* ================= DEBUG ================= */
-
 app.use((req, _res, next) => {
   console.log(`📡 ${req.method} ${req.url}`);
   next();
 });
 
 /* ================= TIMEOUT ================= */
-
 app.use((req, res, next) => {
   res.setTimeout(10000, () => {
     console.error("⏱️ Timeout:", req.originalUrl);
@@ -104,7 +114,6 @@ app.use((req, res, next) => {
 });
 
 /* ================= CORS ================= */
-
 const allowedOrigins = [
   "https://airtimecoin.africa",
   "https://www.airtimecoin.africa",
@@ -121,22 +130,19 @@ app.use(
       }
 
       console.warn("⚠️ Unknown origin:", origin);
-      return callback(null, true); // beta mode
+      return callback(null, true);
     },
     credentials: true,
   })
 );
 
 /* ================= RATE LIMIT ================= */
-
 app.use("/api", apiLimiter);
 
 /* ================= STATIC ================= */
-
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 /* ================= HEALTH ================= */
-
 app.get("/", (_req, res) => {
   res.json({
     status: "online",
@@ -186,16 +192,9 @@ app.use("/api/push", pushRoutes);
 app.use("/postback", postbackRoutes);
 
 /* ================= ERROR ================= */
-
 app.use((err: any, req: any, res: any, _next: any) => {
-  console.error("❌ ERROR:", {
-    message: err?.message,
-    path: req?.originalUrl,
-  });
-
-  res.status(500).json({
-    message: "Internal server error",
-  });
+  console.error("❌ ERROR:", err?.message);
+  res.status(500).json({ message: "Internal server error" });
 });
 
 /* ================= SERVER ================= */
