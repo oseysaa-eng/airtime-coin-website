@@ -1,6 +1,6 @@
-import { Server } from "socket.io";
+import { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
-import { registerCallHandlers } from "./callEngine";
+import { registerCallHandlers } from "./callHandlers";
 
 let ioInstance: Server | null = null;
 
@@ -18,9 +18,20 @@ export function setupSocket(io: Server) {
     try {
       const token = socket.handshake.auth?.token;
 
-      if (!token) return next(new Error("No token"));
+      if (!token) {
+        console.log("❌ No token provided");
+        return next(new Error("Unauthorized"));
+      }
 
-      const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
+      if (!process.env.JWT_SECRET) {
+        throw new Error("JWT_SECRET not set");
+      }
+
+      const decoded: any = jwt.verify(token, process.env.JWT_SECRET);
+
+      if (!decoded?.id) {
+        return next(new Error("Invalid token"));
+      }
 
       socket.userId = decoded.id;
       socket.role = decoded.role || "user";
@@ -37,6 +48,11 @@ export function setupSocket(io: Server) {
   io.on("connection", (socket: any) => {
     const userId = socket.userId;
 
+    if (!userId) {
+      socket.disconnect();
+      return;
+    }
+
     console.log("🟢 Socket connected:", socket.id);
     console.log("👤 User:", userId);
 
@@ -52,6 +68,12 @@ export function setupSocket(io: Server) {
 
     console.log("📊 Active devices:", activeUsers.get(userId)?.size);
 
+    /* ================= MEMORY SAFETY ================= */
+    if (activeUsers.size > 10000) {
+      console.warn("⚠️ Active users overflow, clearing...");
+      activeUsers.clear();
+    }
+
     /* ================= ADMIN ================= */
     if (socket.role === "admin") {
       socket.join("admins");
@@ -64,6 +86,11 @@ export function setupSocket(io: Server) {
     } catch (err) {
       console.error("❌ Call handler error:", err);
     }
+
+    /* ================= HEARTBEAT (ANTI-GHOST SOCKETS) ================= */
+    socket.on("ping-check", () => {
+      socket.emit("pong-check");
+    });
 
     /* ================= DISCONNECT ================= */
     socket.on("disconnect", () => {
@@ -95,13 +122,11 @@ export function emitAdminEvent(event: string, payload: any) {
 }
 
 /* ============================================
-   USER EVENT EMITTERS (ENHANCED)
+   USER EVENT EMITTERS
 ============================================ */
 
 export function pushWalletUpdate(userId: string, payload: any) {
   if (!ioInstance) return;
-
-  console.log("📤 WALLET_UPDATE →", userId, payload);
 
   ioInstance.to(userId).emit("WALLET_UPDATE", payload);
 }
@@ -112,8 +137,6 @@ export function pushMinutes(
   extra: any = {}
 ) {
   if (!ioInstance) return;
-
-  console.log("📤 MINUTES_CREDIT →", userId, minutes);
 
   ioInstance.to(userId).emit("MINUTES_CREDIT", {
     minutes,

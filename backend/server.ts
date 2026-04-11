@@ -4,7 +4,9 @@ import express from "express";
 import http from "http";
 import path from "path";
 import { Server as IOServer } from "socket.io";
-import jwt from "jsonwebtoken";
+import helmet from "helmet";
+import mongoSanitize from "express-mongo-sanitize";
+import xss from "xss-clean";
 
 import connectDB from "./src/config/db";
 import { trustRecoveryJob } from "./src/jobs/trustRecoveryJob";
@@ -14,7 +16,6 @@ import { setupSocket } from "./src/sockets/socket";
 import { setupSupportSocket } from "./src/sockets/supportSocket";
 import { registerAdminEmitter } from "./src/utils/adminEmitter";
 import { apiLimiter } from "./src/middleware/rateLimiter";
-import { registerCallHandlers } from "./src/sockets/callHandlers";
 
 /* ───────── LOAD ENV ───────── */
 dotenv.config();
@@ -27,7 +28,27 @@ if (process.env.TRUST_PROXY === "true") {
   app.set("trust proxy", 1);
 }
 
-/* ───────── CORS (SAFE FOR BETA) ───────── */
+/* ───────── SECURITY MIDDLEWARE ───────── */
+app.use(helmet());
+app.use(mongoSanitize());
+app.use(xss());
+
+/* ───────── REQUEST LOGGER (DEBUGGING) ───────── */
+app.use((req, _res, next) => {
+  console.log(`📡 ${req.method} ${req.url}`);
+  next();
+});
+
+/* ───────── TIMEOUT PROTECTION ───────── */
+app.use((req, res, next) => {
+  res.setTimeout(10000, () => {
+    console.error("⏱️ Request timeout:", req.originalUrl);
+    res.status(503).json({ message: "Request timeout" });
+  });
+  next();
+});
+
+/* ───────── CORS ───────── */
 const allowedOrigins = [
   "https://airtimecoin.africa",
   "https://www.airtimecoin.africa",
@@ -56,10 +77,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api", apiLimiter);
 
 /* ───────── STATIC FILES ───────── */
-app.use(
-  "/uploads",
-  express.static(path.join(process.cwd(), "uploads"))
-);
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 /* ───────── HEALTH CHECK ───────── */
 app.get("/", (_req, res) => {
@@ -151,12 +169,7 @@ app.use("/postback", postbackRoutes);
 
 /* ───────── ERROR HANDLER ───────── */
 app.use((err: any, req: any, res: any, _next: any) => {
-  console.error("❌ SERVER ERROR:", {
-    path: req.path,
-    method: req.method,
-    message: err?.message,
-  });
-
+  console.error("❌ SERVER ERROR:", err?.message);
   res.status(500).json({ message: "Internal server error" });
 });
 
@@ -172,37 +185,12 @@ const io = new IOServer(server, {
   },
 });
 
-/* SOCKET AUTH */
-io.use((socket: any, next) => {
-  try {
-    const token = socket.handshake.auth?.token;
-    if (!token) return next(new Error("No token"));
-
-    const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
-    socket.userId = decoded.id;
-
-    next();
-  } catch {
-    next(new Error("Unauthorized"));
-  }
-});
-
-/* SOCKET CONNECTION */
-io.on("connection", (socket: any) => {
-  console.log("🟢 Socket:", socket.id);
-
-  registerCallHandlers(socket);
-
-  socket.on("disconnect", () => {
-    console.log("🔴 Disconnected:", socket.userId);
-  });
-});
-
+/* 🔥 SOCKET HANDLED ONLY HERE */
 setupSocket(io);
 setupSupportSocket(io);
 registerAdminEmitter(io);
 
-/* ───────── START SERVER (CRITICAL FIX) ───────── */
+/* ───────── START SERVER ───────── */
 
 const startServer = async () => {
   try {
@@ -211,19 +199,16 @@ const startServer = async () => {
       jwt: process.env.JWT_SECRET ? "OK" : "MISSING",
     });
 
-    // ✅ CONNECT DB FIRST (BLOCKING)
     await connectDB();
 
-    // ✅ START SERVER ONLY AFTER DB
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 ATC Backend running on port ${PORT}`);
     });
 
-    // ✅ SAFE INIT (non-blocking)
+    // SAFE INIT
     setTimeout(async () => {
       try {
         const exists = await SystemSettings.findOne();
-
         if (!exists) {
           await SystemSettings.create({});
           console.log("✅ SystemSettings initialized");
@@ -233,7 +218,6 @@ const startServer = async () => {
       }
     }, 2000);
 
-    // ✅ BACKGROUND JOB
     setInterval(trustRecoveryJob, 24 * 60 * 60 * 1000);
 
   } catch (err) {

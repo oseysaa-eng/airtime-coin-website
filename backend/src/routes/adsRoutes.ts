@@ -17,7 +17,6 @@ const router = express.Router();
 /* ----------------------------------
    DAILY POOL RESET HELPER
 ---------------------------------- */
-
 function resetDailyPool(pool: any) {
 
   const now = new Date();
@@ -38,7 +37,6 @@ function resetDailyPool(pool: any) {
   POST /api/ads/complete
   Reward user after watching ad
 */
-
 router.post("/complete", auth, async (req: any, res) => {
   try {
     const userId = req.user.id;
