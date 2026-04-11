@@ -30,8 +30,13 @@ if (process.env.TRUST_PROXY === "true") {
 
 /* ───────── SECURITY MIDDLEWARE ───────── */
 app.use(helmet());
-app.use(mongoSanitize({ replaceWith: "_",}));
 
+/* ───────── SANITIZATION ───────── */
+app.use(
+  mongoSanitize({
+    replaceWith: "_",
+  })
+);
 
 
 /* ───────── REQUEST LOGGER (DEBUGGING) ───────── */
@@ -76,6 +81,7 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use("/api", apiLimiter);
+
 
 /* ───────── STATIC FILES ───────── */
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
