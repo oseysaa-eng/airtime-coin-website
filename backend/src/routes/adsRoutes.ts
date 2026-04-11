@@ -15,10 +15,9 @@ import { addMinedMinutes } from "../services/emissionTracker";
 const router = express.Router();
 
 /* ----------------------------------
-   DAILY POOL RESET HELPER
+   DAILY POOL RESET
 ---------------------------------- */
 function resetDailyPool(pool: any) {
-
   const now = new Date();
   const last = new Date(pool.lastReset);
 
@@ -32,23 +31,46 @@ function resetDailyPool(pool: any) {
   }
 }
 
-
-/*
-  POST /api/ads/complete
-  Reward user after watching ad
-*/
+/* ==================================
+   POST /api/ads/complete
+================================== */
 router.post("/complete", auth, async (req: any, res) => {
   try {
     const userId = req.user.id;
     const { adRewardId, network, signature } = req.body;
 
-    if (!adRewardId) {
-      return res.status(400).json({ message: "Missing adRewardId" });
+    /* ================= VALIDATION ================= */
+    if (!adRewardId || !network) {
+      return res.status(400).json({ message: "Invalid request" });
     }
 
-    /* ================= DUPLICATE (FAST CHECK) ================= */
-    const exists = await AdReward.exists({ adRewardId });
-    if (exists) {
+    /* ================= SIGNATURE VERIFY ================= */
+    const isValid = verifyAdSignature({
+      adRewardId,
+      network,
+      signature,
+    });
+
+    if (!isValid) {
+      return res.status(403).json({ message: "Invalid ad verification" });
+    }
+
+    /* ================= ATOMIC LOCK ================= */
+    const lock = await AdReward.findOneAndUpdate(
+      { adRewardId },
+      {
+        $setOnInsert: {
+          userId,
+          adRewardId,
+          network,
+          status: "processing",
+          createdAt: new Date(),
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    if (lock.status !== "processing") {
       return res.json({
         success: true,
         creditedMinutes: 0,
@@ -56,15 +78,15 @@ router.post("/complete", auth, async (req: any, res) => {
       });
     }
 
-    /* ================= PARALLEL FETCH ================= */
+    /* ================= FETCH DATA ================= */
     const [settings, pool, trust, stats] = await Promise.all([
-      SystemSettings.findOne().lean(),
-      RewardPool.findOne({ type: "ADS" }).lean(),
-      UserTrust.findOne({ userId }).lean(),
+      SystemSettings.findOne(),
+      RewardPool.findOne({ type: "ADS" }),
+      UserTrust.findOne({ userId }),
       UserDailyStats.findOne({
         userId,
         date: new Date().toISOString().slice(0, 10),
-      }).lean(),
+      }),
     ]);
 
     /* ================= INCIDENT MODE ================= */
@@ -103,20 +125,24 @@ router.post("/complete", auth, async (req: any, res) => {
       }
     }
 
-    if (
-      pool &&
-      pool.spentTodayATC + creditedMinutes > pool.dailyLimitATC
-    ) {
-      return res.status(403).json({ message: "Budget exhausted" });
+    if (pool) {
+      resetDailyPool(pool);
+
+      if (
+        pool.spentTodayATC + creditedMinutes >
+        pool.dailyLimitATC
+      ) {
+        return res.status(403).json({ message: "Budget exhausted" });
+      }
     }
 
-    /* ================= 🚀 INSTANT RESPONSE ================= */
+    /* ================= RESPONSE FAST ================= */
     res.json({
       success: true,
       creditedMinutes,
     });
 
-    /* ================= 🔥 BACKGROUND PROCESS ================= */
+    /* ================= BACKGROUND ================= */
     (async () => {
       try {
         const io = req.app.get("io");
@@ -132,7 +158,6 @@ router.post("/complete", auth, async (req: any, res) => {
         await addMinedMinutes(creditedMinutes);
 
         await Promise.all([
-          // update stats
           UserDailyStats.updateOne(
             { userId, date: new Date().toISOString().slice(0, 10) },
             {
@@ -145,22 +170,28 @@ router.post("/complete", auth, async (req: any, res) => {
             { upsert: true }
           ),
 
-          // update pool
           RewardPool.updateOne(
             { type: "ADS" },
             { $inc: { spentTodayATC: creditedMinutes } }
           ),
 
-          // log reward
-          AdReward.create({
-            userId,
-            adRewardId,
-            network,
-            rewardMinutes: creditedMinutes,
-          }),
+          AdReward.updateOne(
+            { adRewardId },
+            {
+              $set: {
+                status: "completed",
+                rewardMinutes: creditedMinutes,
+              },
+            }
+          ),
         ]);
       } catch (err) {
-        console.error("⚠️ Background ad processing error:", err);
+        console.error("⚠️ Background error:", err);
+
+        await AdReward.updateOne(
+          { adRewardId },
+          { $set: { status: "failed" } }
+        );
       }
     })();
 

@@ -4,51 +4,71 @@ import ATCPriceHistory from "../models/ATCPriceHistory";
 
 const router = express.Router();
 
-/**
- * GET /api/price
- * Public ATC price endpoint
- */
+/* ================= GET CURRENT PRICE ================= */
 router.get("/", async (_req, res) => {
-  const price = await ATCPrice.findOne().sort({ updatedAt: -1 });
+  try {
+    const price = await ATCPrice.findOne()
+      .sort({ updatedAt: -1 })
+      .lean();
 
-  // 🟢 Safe fallback (first launch)
-  if (!price) {
-    return res.json({
-      price: 0,
-      previous: 0,
-      changePercent: 0,
-      trend: "flat",
-      updatedAt: new Date(),
-      mode: "AUTO",
+    // 🟢 SAFE FALLBACK (first launch)
+    if (!price) {
+      return res.json({
+        price: 0,
+        previous: 0,
+        changePercent: 0,
+        trend: "flat",
+        updatedAt: new Date(),
+        mode: "AUTO",
+      });
+    }
+
+    res.json({
+      price: price.currentPrice,
+      previous: price.previousPrice ?? price.currentPrice,
+      changePercent: Number(price.changePercent ?? 0),
+      trend: price.trend ?? "flat",
+      updatedAt: price.updatedAt,
+      mode: price.mode ?? "AUTO",
+    });
+
+  } catch (err) {
+    console.error("PRICE ERROR:", err);
+
+    res.status(500).json({
+      message: "Failed to fetch price",
     });
   }
-
-  res.json({
-    price: price.currentPrice,
-    previous: price.previousPrice || price.currentPrice,
-    changePercent: Number(price.changePercent || 0),
-    trend: price.trend || "flat",
-    updatedAt: price.updatedAt,
-    mode: price.mode || "AUTO",
-  });
 });
 
-/**
- * GET /api/price/history?days=7
- */
+/* ================= GET PRICE HISTORY ================= */
 router.get("/history", async (req, res) => {
-  const days = Math.min(Number(req.query.days || 7), 90);
+  try {
+    let days = parseInt(req.query.days as string) || 7;
 
-  const from = new Date();
-  from.setDate(from.getDate() - days);
+    // 🔒 VALIDATION
+    if (isNaN(days) || days <= 0) days = 7;
+    if (days > 90) days = 90;
 
-  const history = await ATCPriceHistory.find({
-    createdAt: { $gte: from },
-  })
-    .sort({ createdAt: 1 })
-    .select("price createdAt -_id");
+    const from = new Date();
+    from.setDate(from.getDate() - days);
 
-  res.json(history);
+    const history = await ATCPriceHistory.find({
+      createdAt: { $gte: from },
+    })
+      .sort({ createdAt: 1 })
+      .select("price createdAt -_id")
+      .lean();
+
+    res.json(history);
+
+  } catch (err) {
+    console.error("PRICE HISTORY ERROR:", err);
+
+    res.status(500).json({
+      message: "Failed to fetch price history",
+    });
+  }
 });
 
 export default router;
