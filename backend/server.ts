@@ -6,6 +6,7 @@ import path from "path";
 import { Server as IOServer } from "socket.io";
 import helmet from "helmet";
 import mongoSanitize from "express-mongo-sanitize";
+import "./src/config/firebase";
 
 
 import connectDB from "./src/config/db";
