@@ -1,15 +1,11 @@
-import { Server, Socket } from "socket.io";
+import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import { registerCallHandlers } from "./callHandlers";
 
 let ioInstance: Server | null = null;
 
-/* 🔥 Track active users (multi-device safe) */
 const activeUsers = new Map<string, Set<string>>();
 
-/* ============================================
-   MAIN SOCKET SETUP
-============================================ */
 export function setupSocket(io: Server) {
   ioInstance = io;
 
@@ -37,7 +33,6 @@ export function setupSocket(io: Server) {
       socket.role = decoded.role || "user";
 
       next();
-
     } catch (err: any) {
       console.log("❌ Socket auth failed:", err.message);
       next(new Error("Unauthorized"));
@@ -49,17 +44,17 @@ export function setupSocket(io: Server) {
     const userId = socket.userId;
 
     if (!userId) {
-      socket.disconnect();
-      return;
+      console.log("❌ No userId - disconnect");
+      socket.emit("error", "Unauthorized");
+      return socket.disconnect(true);
     }
 
     console.log("🟢 Socket connected:", socket.id);
     console.log("👤 User:", userId);
 
-    /* ================= JOIN ROOM ================= */
     socket.join(userId);
 
-    /* ================= TRACK ACTIVE USERS ================= */
+    /* ================= TRACK USERS ================= */
     if (!activeUsers.has(userId)) {
       activeUsers.set(userId, new Set());
     }
@@ -68,7 +63,6 @@ export function setupSocket(io: Server) {
 
     console.log("📊 Active devices:", activeUsers.get(userId)?.size);
 
-    /* ================= MEMORY SAFETY ================= */
     if (activeUsers.size > 10000) {
       console.warn("⚠️ Active users overflow, clearing...");
       activeUsers.clear();
@@ -80,14 +74,14 @@ export function setupSocket(io: Server) {
       console.log("👑 Admin connected");
     }
 
-    /* ================= CALL ENGINE ================= */
+    /* ================= CALL HANDLER ================= */
     try {
-      registerCallHandlers(io, socket);
+      registerCallHandlers(socket); // ✅ FIXED
     } catch (err) {
       console.error("❌ Call handler error:", err);
     }
 
-    /* ================= HEARTBEAT (ANTI-GHOST SOCKETS) ================= */
+    /* ================= HEARTBEAT ================= */
     socket.on("ping-check", () => {
       socket.emit("pong-check");
     });
@@ -103,7 +97,7 @@ export function setupSocket(io: Server) {
 
         if (userSockets.size === 0) {
           activeUsers.delete(userId);
-          console.log("👤 User fully offline:", userId);
+          console.log("👤 User offline:", userId);
         } else {
           console.log("📊 Remaining devices:", userSockets.size);
         }
@@ -112,32 +106,20 @@ export function setupSocket(io: Server) {
   });
 }
 
-/* ============================================
-   ADMIN EVENT EMITTER
-============================================ */
+/* ================= EMITTERS ================= */
+
 export function emitAdminEvent(event: string, payload: any) {
   if (!ioInstance) return;
-
   ioInstance.to("admins").emit(event, payload);
 }
 
-/* ============================================
-   USER EVENT EMITTERS
-============================================ */
-
 export function pushWalletUpdate(userId: string, payload: any) {
   if (!ioInstance) return;
-
   ioInstance.to(userId).emit("WALLET_UPDATE", payload);
 }
 
-export function pushMinutes(
-  userId: string,
-  minutes: number,
-  extra: any = {}
-) {
+export function pushMinutes(userId: string, minutes: number, extra: any = {}) {
   if (!ioInstance) return;
-
   ioInstance.to(userId).emit("MINUTES_CREDIT", {
     minutes,
     ...extra,

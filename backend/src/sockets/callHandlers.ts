@@ -6,8 +6,7 @@ export const registerCallHandlers = (socket: any) => {
 
   if (!userId) {
     console.log("❌ No userId in socket");
-    socket.disconnect();
-    return;
+    return; // 🔥 DO NOT CRASH
   }
 
   /* ================= CALL START ================= */
@@ -19,17 +18,16 @@ export const registerCallHandlers = (socket: any) => {
         { sessionId },
         {
           userId,
-          phoneNumber: number || "unknown",
+          phoneNumber: number,
           status: "pending",
           startedAt: new Date(),
         },
-        { upsert: true, new: true }
+        { upsert: true }
       );
 
-      console.log("✅ CALL START SAVED:", sessionId);
-
+      console.log("✅ CALL START:", sessionId);
     } catch (e) {
-      console.error("❌ CALL START ERROR:", e);
+      console.error("CALL START ERROR:", e);
     }
   });
 
@@ -38,80 +36,21 @@ export const registerCallHandlers = (socket: any) => {
     try {
       if (!sessionId) return;
 
-      // 🔒 Validate duration
-      const durationSeconds = Number(duration);
-      if (!durationSeconds || durationSeconds < 5) {
-        console.log("⚠️ Call too short, ignored:", durationSeconds);
-        return;
-      }
-
       const session = await CallSession.findOne({ sessionId });
 
-      if (!session) {
-        console.log("❌ Session not found:", sessionId);
-        return;
-      }
+      if (!session || session.status !== "pending") return;
 
-      // 🔒 Prevent duplicate processing
-      if (session.status !== "pending") {
-        console.log("⚠️ Already processed:", sessionId);
-        return;
-      }
-
-      // 🔒 Ensure correct user
-      if (session.userId.toString() !== userId) {
-        console.log("❌ User mismatch:", sessionId);
-        return;
-      }
-
-      session.durationSeconds = durationSeconds;
+      session.durationSeconds = duration;
       session.endedAt = new Date();
-      session.status = "completed";
-
       await session.save();
 
-      console.log("✅ CALL END UPDATED:", sessionId);
+      console.log("✅ CALL END:", sessionId);
 
-      // 💰 TRIGGER EARNING ENGINE
+      // 🔥 FIXED (you had wrong param)
       await processCallEarning(sessionId);
 
     } catch (e) {
-      console.error("❌ CALL END ERROR:", e);
-    }
-  });
-
-  /* ================= FAILSAFE (AUTO END) ================= */
-  socket.on("disconnect", async () => {
-    try {
-      console.log("⚠️ Socket disconnected, checking active calls...");
-
-      const activeSessions = await CallSession.find({
-        userId,
-        status: "pending",
-      });
-
-      for (const session of activeSessions) {
-        const duration =
-          (Date.now() - new Date(session.startedAt).getTime()) / 1000;
-
-        if (duration > 10) {
-          session.durationSeconds = Math.floor(duration);
-          session.endedAt = new Date();
-          session.status = "completed";
-
-          await session.save();
-
-          console.log("🔄 Auto-ended call:", session.sessionId);
-
-          await processCallEarning(session.sessionId);
-        } else {
-          session.status = "failed";
-          await session.save();
-        }
-      }
-
-    } catch (err) {
-      console.error("❌ Disconnect cleanup error:", err);
+      console.error("CALL END ERROR:", e);
     }
   });
 };
