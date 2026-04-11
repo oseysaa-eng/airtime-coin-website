@@ -31,6 +31,11 @@ if (process.env.TRUST_PROXY === "true") {
 /* ───────── SECURITY MIDDLEWARE ───────── */
 app.use(helmet());
 
+/* ───────── BODY PARSER ───────── */
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+
 /* ───────── SANITIZATION ───────── */
 app.use(
   mongoSanitize({
@@ -77,11 +82,7 @@ app.use(
   })
 );
 
-/* ───────── BODY PARSER ───────── */
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
 app.use("/api", apiLimiter);
-
 
 /* ───────── STATIC FILES ───────── */
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
@@ -176,12 +177,18 @@ app.use("/postback", postbackRoutes);
 
 /* ───────── ERROR HANDLER ───────── */
 app.use((err: any, req: any, res: any, _next: any) => {
-  console.error("❌ SERVER ERROR:", err?.message);
-  res.status(500).json({ message: "Internal server error" });
+  console.error("❌ SERVER ERROR:", {
+    message: err?.message,
+    stack: err?.stack,
+    path: req?.originalUrl,
+  });
+
+  res.status(500).json({
+    message: "Internal server error",
+  });
 });
 
 /* ───────── SERVER + SOCKET ───────── */
-
 const PORT = Number(process.env.PORT) || 5000;
 const server = http.createServer(app);
 
