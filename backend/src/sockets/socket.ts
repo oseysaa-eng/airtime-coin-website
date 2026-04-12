@@ -29,7 +29,7 @@ export function setupSocket(io: Server) {
         return next(new Error("Invalid token"));
       }
 
-      socket.userId = decoded.id;
+      socket.userId = decoded.id.toString(); // 🔥 FIX
       socket.role = decoded.role || "user";
 
       next();
@@ -76,7 +76,7 @@ export function setupSocket(io: Server) {
 
     /* ================= CALL HANDLER ================= */
     try {
-      registerCallHandlers(socket); // ✅ FIXED
+      registerCallHandlers(socket);
     } catch (err) {
       console.error("❌ Call handler error:", err);
     }
@@ -109,18 +109,38 @@ export function setupSocket(io: Server) {
 /* ================= EMITTERS ================= */
 
 export function emitAdminEvent(event: string, payload: any) {
-  if (!ioInstance) return;
+  if (!ioInstance) {
+    console.warn("⚠️ IO not ready (admin emit skipped)");
+    return;
+  }
+
   ioInstance.to("admins").emit(event, payload);
 }
 
 export function pushWalletUpdate(userId: string, payload: any) {
-  if (!ioInstance) return;
-  ioInstance.to(userId).emit("WALLET_UPDATE", payload);
+  if (!ioInstance) {
+    console.warn("⚠️ IO not ready (wallet update skipped)");
+    return;
+  }
+
+  console.log("📤 WALLET_UPDATE →", userId, payload); // 🔥 DEBUG
+
+  ioInstance.to(userId.toString()).emit("WALLET_UPDATE", payload);
 }
 
-export function pushMinutes(userId: string, minutes: number, extra: any = {}) {
-  if (!ioInstance) return;
-  ioInstance.to(userId).emit("MINUTES_CREDIT", {
+export function pushMinutes(
+  userId: string,
+  minutes: number,
+  extra: any = {}
+) {
+  if (!ioInstance) {
+    console.warn("⚠️ IO not ready (minutes skipped)");
+    return;
+  }
+
+  console.log("📤 MINUTES_CREDIT →", userId, minutes); // 🔥 DEBUG
+
+  ioInstance.to(userId.toString()).emit("MINUTES_CREDIT", {
     minutes,
     ...extra,
   });
