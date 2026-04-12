@@ -65,11 +65,19 @@ if (pool.balanceATC < finalATC) {
     scaledATC / (BASE_RATE * emissionMultiplier)
   );
 
-  if (finalMinutes <= 0) throw new Error("Pool empty");
+  if (finalMinutes <= 0) {
+  console.warn("⚠️ Pool critically empty — auto refill");
 
+  pool.balanceATC += 100000; // 🔥 refill instantly
+  pool.paused = false;
+
+  await pool.save({ session });
+
+  finalMinutes = 1; // minimum reward
   finalATC = Number(
     (finalMinutes * BASE_RATE * emissionMultiplier).toFixed(6)
   );
+}
 }
 
 /* ================= WALLET ================= */
