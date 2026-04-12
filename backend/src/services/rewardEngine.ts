@@ -47,16 +47,29 @@ export async function rewardEngine({
     }
 
     /* ================= POOL ================= */
-    const pool = await RewardPool.findOne({ type: source }).session(session);
+const pool = await RewardPool.findOne({ type: source }).session(session);
 
-    if (!pool) throw new Error(`Reward pool not found: ${source}`);
-    if (pool.paused) throw new Error(`${source} rewards paused`);
+if (!pool) throw new Error(`Reward pool not found: ${source}`);
+if (pool.paused) throw new Error(`${source} rewards paused`);
 
-    resetIfNewDay(pool);
+resetIfNewDay(pool);
 
-    if (pool.balanceATC < atcAmount) throw new Error("Pool depleted");
-    if (pool.spentTodayATC + atcAmount > pool.dailyLimitATC)
-      throw new Error("Daily limit reached");
+// 🔥 SAFE SCALING INSTEAD OF FAIL
+if (pool.balanceATC < atcAmount) {
+  console.warn("⚠️ Pool low — scaling reward");
+
+  const ratio = pool.balanceATC / atcAmount;
+
+  if (ratio <= 0) throw new Error("Pool empty");
+
+  const scaledATC = pool.balanceATC * 0.9;
+
+  minutes = Math.floor(
+    scaledATC / (BASE_RATE * emissionMultiplier)
+  );
+
+  if (minutes <= 0) throw new Error("Reward too small");
+}
 
     /* ================= WALLET ================= */
 let wallet = await Wallet.findOneAndUpdate(
