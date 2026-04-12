@@ -130,8 +130,6 @@ useEffect(() => {
         });
       });
 
-      
-
       /* ================= MINUTES CREDIT ================= */
       unsubMinutes = await onSocketEvent("MINUTES_CREDIT", (data) => {
         console.log("⚡ MINUTES_CREDIT:", data);

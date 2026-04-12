@@ -53,6 +53,15 @@ const pool = await RewardPool.findOne({ type: source }).session(session);
 if (!pool) throw new Error(`Reward pool not found: ${source}`);
 if (pool.paused) throw new Error(`${source} rewards paused`);
 
+if (pool.balanceATC < 1) {
+  console.warn("⚠️ Pool drained — emergency refill");
+
+  pool.balanceATC += 200000;
+  pool.paused = false;
+
+  await pool.save({ session });
+}
+
 resetIfNewDay(pool);
 
 /* 🔥 SCALING FIX */
@@ -100,26 +109,37 @@ let wallet = await Wallet.findOneAndUpdate(
 
 /* ================= APPLY ================= */
 
-if (pool.balanceATC < finalATC) {
-  throw new Error("Pool depleted (race)");
+finalATC = Number(
+  (finalMinutes * BASE_RATE * emissionMultiplier).toFixed(6)
+);
+
+// 🔒 ATOMIC POOL UPDATE
+const updatedPool = await RewardPool.findOneAndUpdate(
+  {
+    _id: pool._id,
+    balanceATC: { $gte: finalATC },
+  },
+  {
+    $inc: {
+      balanceATC: -finalATC,
+      spentTodayATC: finalATC,
+    },
+  },
+  { new: true, session }
+);
+
+if (!updatedPool) {
+  throw new Error("Pool depleted (atomic)");
 }
 
-pool.balanceATC -= finalATC;
-pool.spentTodayATC += finalATC;
-
-if (pool.balanceATC < pool.dailyLimitATC * 2) {
-  pool.paused = true;
-}
-
-await pool.save({ session });
-
+// Wallet
 wallet.balanceATC += finalATC;
 wallet.totalMinutes += finalMinutes;
 wallet.todayMinutes += finalMinutes;
 
 await wallet.save({ session });
 
-/* ================= TX ================= */
+// TX
 await Transaction.create(
   [
     {
@@ -136,6 +156,10 @@ await Transaction.create(
   ],
   { session }
 );
+
+// ✅ COMMIT (CRITICAL FIX)
+await session.commitTransaction();
+session.endSession();
 
 /* ================= SOCKET ================= */
 pushWalletUpdate(userIdStr, {
