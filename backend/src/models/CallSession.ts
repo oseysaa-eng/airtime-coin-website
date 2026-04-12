@@ -10,11 +10,12 @@ const callSessionSchema = new mongoose.Schema(
       index: true,
     },
 
+    // 🔥 Use ONLY if session comes from mobile/external
     sessionId: {
       type: String,
-      required: true,
       unique: true,
-      index: true, // 🔥 faster lookup
+      sparse: true, // ✅ avoids index issues if null
+      index: true,
     },
 
     phoneNumber: {
@@ -40,16 +41,20 @@ const callSessionSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: [
-        "pending",     // created
-        "processing",  // 🔒 locked (anti-duplicate)
-        "completed",   // finished + credited
-        "valid",       // optional legacy
-        "rejected",    // too short / no reward
-        "blocked",     // fraud blocked
-        "fraud",       // legacy
+        "active",
+        "processing",
+        "completed",
+        "rejected",
+        "blocked",
       ],
-      default: "pending",
+      default: "active",
       index: true,
+    },
+
+    rewarded: {
+      type: Boolean,
+      default: false,
+      index: true, // 🔥 fast duplicate check
     },
 
     /* ================= FRAUD ================= */
@@ -67,7 +72,7 @@ const callSessionSchema = new mongoose.Schema(
 
     trustScore: {
       type: Number,
-      default: 1,
+      default: 100,
     },
 
     /* ================= TIME ================= */
@@ -83,16 +88,16 @@ const callSessionSchema = new mongoose.Schema(
       default: null,
     },
 
+    processedAt: {
+      type: Date,
+      default: null,
+    },
+
     /* ================= META ================= */
 
     source: {
       type: String,
       default: "mobile",
-    },
-
-    processedAt: {
-      type: Date,
-      default: null,
     },
   },
   {
@@ -102,10 +107,25 @@ const callSessionSchema = new mongoose.Schema(
 
 /* ================= INDEXES ================= */
 
-// 🔥 compound indexes for analytics + speed
+// Fast user history
 callSessionSchema.index({ userId: 1, createdAt: -1 });
+
+// Status filtering (important for reward engine)
 callSessionSchema.index({ userId: 1, status: 1 });
+
+// Fraud detection (future use)
+callSessionSchema.index({ userId: 1, riskScore: -1 });
+
+// Phone pattern detection
 callSessionSchema.index({ phoneNumber: 1, createdAt: -1 });
+
+/* ================= TTL CLEANUP (VERY IMPORTANT) ================= */
+
+// 🔥 Auto-delete after 30 days
+callSessionSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: 60 * 60 * 24 * 30 }
+);
 
 export default mongoose.models.CallSession ||
   mongoose.model("CallSession", callSessionSchema);

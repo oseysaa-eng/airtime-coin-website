@@ -100,23 +100,23 @@ export default function HomeScreen() {
 
   /* ================= SOCKET ================= */
 
+
 useEffect(() => {
   let unsubWallet: any;
   let unsubMinutes: any;
 
+  let mounted = true;
+
   const setup = async () => {
     const socket = await connectSocket();
-    if (!socket) return;
+    if (!socket || !mounted) return;
 
     const attachListeners = async () => {
-      console.log("✅ Attaching socket listeners");
+      console.log("✅ Socket listeners attached");
 
+      /* ================= WALLET UPDATE ================= */
       unsubWallet = await onSocketEvent("WALLET_UPDATE", (data) => {
-        const now = Date.now();
-        if (now - lastUpdateRef.current < 300) return;
-        lastUpdateRef.current = now;
-
-        console.log("🔥 WALLET_UPDATE RECEIVED:", data);
+        console.log("🔥 WALLET_UPDATE:", data);
 
         setDashboard((prev: any) => {
           if (!prev) return prev;
@@ -124,16 +124,19 @@ useEffect(() => {
           return {
             ...prev,
             balance: data.balance ?? prev.balance,
-            totalMinutes: (prev.totalMinutes || 0) + (data.minutes || 0),
-            todayMinutes: (prev.todayMinutes || 0) + (data.minutes || 0),
+            totalMinutes: data.totalMinutes ?? prev.totalMinutes,
+            todayMinutes: data.todayMinutes ?? prev.todayMinutes,
           };
         });
       });
 
+      /* ================= MINUTES CREDIT ================= */
       unsubMinutes = await onSocketEvent("MINUTES_CREDIT", (data) => {
-        console.log("🔥 MINUTES_CREDIT RECEIVED:", data);
+        console.log("⚡ MINUTES_CREDIT:", data);
 
-        const earned = data.minutes || 0;
+        const earned = data?.minutes || 0;
+
+        if (!earned) return;
 
         setRewardPopup(earned);
         setIsEarning(true);
@@ -146,15 +149,16 @@ useEffect(() => {
     };
 
     if (socket.connected) {
-      await attachListeners();
+      attachListeners();
     } else {
-      socket.on("connect", attachListeners);
+      socket.once("connect", attachListeners);
     }
   };
 
   setup();
 
   return () => {
+    mounted = false;
     unsubWallet?.();
     unsubMinutes?.();
   };
@@ -524,12 +528,14 @@ rewardPopup: {
   elevation: 20,
 },
 
-
 rewardText: {
   color: "#4ade80",
-  fontWeight: "700",
-  fontSize: 14,
-  
+  fontWeight: "800",
+  fontSize: 18,
+  backgroundColor: "rgba(0,0,0,0.6)",
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  borderRadius: 20,
 },
 
 livePulse: {
@@ -550,5 +556,3 @@ earningCard: {
 },
 
 });
-
-

@@ -2,23 +2,68 @@ import mongoose from "mongoose";
 
 import Wallet from "../models/Wallet";
 import Transaction from "../models/Transaction";
+import RewardPool from "../models/RewardPool";
+
+import { resetIfNewDay } from "../utils/resetDailyCounter";
+import { getEmissionMultiplier } from "./emissionService";
 
 import {
   pushWalletUpdate,
   pushMinutes,
 } from "../sockets/socket";
 
+const BASE_RATE = 0.0025;
+
 export async function rewardEngine({
   userId,
   minutes,
   source,
   meta = {},
-}: any) {
+}: {
+  userId: string;
+  minutes: number;
+  source: "CALL_SESSION" | "ADS" | "SURVEY" | "DAILY_BONUS";
+  meta?: any;
+}) {
+  if (!minutes || minutes <= 0) {
+    throw new Error("Invalid minutes");
+  }
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    /* ================= GET OR CREATE WALLET ================= */
+    /* ================= EMISSION ================= */
+    const emissionMultiplier = await getEmissionMultiplier();
+
+    const atcAmount = Number(
+      (minutes * BASE_RATE * emissionMultiplier).toFixed(6)
+    );
+
+    if (atcAmount <= 0) {
+      throw new Error("Emission too low");
+    }
+
+    /* ================= REWARD POOL ================= */
+    const pool = await RewardPool.findOne({ type: source }).session(session);
+
+    if (!pool) throw new Error(`Reward pool not found: ${source}`);
+
+    if (pool.paused) {
+      throw new Error(`${source} rewards paused`);
+    }
+
+    resetIfNewDay(pool);
+
+    if (pool.balanceATC < atcAmount) {
+      throw new Error("Pool depleted");
+    }
+
+    if (pool.spentTodayATC + atcAmount > pool.dailyLimitATC) {
+      throw new Error("Daily limit reached");
+    }
+
+    /* ================= WALLET ================= */
     let wallet = await Wallet.findOne({ userId }).session(session);
 
     if (!wallet) {
@@ -26,6 +71,7 @@ export async function rewardEngine({
         [
           {
             userId,
+            balanceATC: 0,
             totalMinutes: 0,
             todayMinutes: 0,
           },
@@ -34,21 +80,38 @@ export async function rewardEngine({
       ).then((res) => res[0]);
     }
 
-    /* ================= UPDATE WALLET ================= */
+    /* ================= APPLY CHANGES ================= */
+
+    // Pool
+    pool.balanceATC -= atcAmount;
+    pool.spentTodayATC += atcAmount;
+
+    if (pool.balanceATC < pool.dailyLimitATC * 2) {
+      pool.paused = true;
+    }
+
+    await pool.save({ session });
+
+    // Wallet
+    wallet.balanceATC += atcAmount;
     wallet.totalMinutes += minutes;
     wallet.todayMinutes += minutes;
 
     await wallet.save({ session });
 
-    /* ================= CREATE TRANSACTION ================= */
+    /* ================= TRANSACTION ================= */
     await Transaction.create(
       [
         {
           userId,
           type: "EARN",
-          amount: minutes,
           source,
-          meta,
+          amount: atcAmount,
+          meta: {
+            minutes,
+            emissionMultiplier,
+            ...meta,
+          },
         },
       ],
       { session }
@@ -58,29 +121,29 @@ export async function rewardEngine({
     await session.commitTransaction();
     session.endSession();
 
-    /* ================= 🔥 REAL-TIME PUSH ================= */
+    /* ================= REAL-TIME PUSH ================= */
 
-    // ✅ Full wallet update
-    pushWalletUpdate(userId.toString(), {
+    pushWalletUpdate(userId, {
+      balance: wallet.balanceATC,
       totalMinutes: wallet.totalMinutes,
       todayMinutes: wallet.todayMinutes,
-      balance: wallet.balanceATC || 0,
       source,
     });
 
-    // ✅ Animation / quick feedback
-    pushMinutes(userId.toString(), minutes, {
-      source,
-    });
+    pushMinutes(userId, minutes, { source });
 
-    return true;
+    return {
+      creditedMinutes: minutes,
+      creditedATC: atcAmount,
+      emissionMultiplier,
+      balance: wallet.balanceATC,
+    };
 
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
 
     console.error("❌ REWARD ENGINE ERROR:", err);
-
     throw err;
   }
 }
