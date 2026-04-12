@@ -59,21 +59,31 @@ export async function rewardEngine({
       throw new Error("Daily limit reached");
 
     /* ================= WALLET ================= */
-    let wallet = await Wallet.findOne({ userId }).session(session);
+let wallet = await Wallet.findOneAndUpdate(
+  { userId },
+  {
+    $setOnInsert: {
+      userId,
+      balanceATC: 0,
+      totalMinutes: 0,
+      todayMinutes: 0,
+    },
+  },
+  {
+    new: true,
+    upsert: true,
+    session,
+  }
+);
 
-    if (!wallet) {
-      wallet = await Wallet.create(
-        [
-          {
-            userId,
-            balanceATC: 0,
-            totalMinutes: 0,
-            todayMinutes: 0,
-          },
-        ],
-        { session }
-      ).then((res) => res[0]);
-    }
+// ✅ RESET + SAVE
+resetIfNewDay(pool);
+await pool.save({ session });
+
+// ✅ FINAL SAFETY CHECK
+if (pool.balanceATC < atcAmount) {
+  throw new Error("Pool depleted (race)");
+}
 
     /* ================= APPLY ================= */
 

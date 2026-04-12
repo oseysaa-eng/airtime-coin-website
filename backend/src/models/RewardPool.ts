@@ -4,7 +4,7 @@ const RewardPoolSchema = new mongoose.Schema(
 {
   type: {
     type: String,
-    enum: ["CALL", "ADS", "SURVEY"],
+    enum: ["CALL_SESSION", "ADS", "SURVEY", "DAILY_BONUS"], // ✅ FIXED
     required: true,
     unique: true,
     index: true
@@ -17,7 +17,7 @@ const RewardPoolSchema = new mongoose.Schema(
 
   dailyLimitATC: {
     type: Number,
-    default: 50000   // max minutes distributed per day
+    default: 50000
   },
 
   spentTodayATC: {
@@ -40,4 +40,3 @@ const RewardPoolSchema = new mongoose.Schema(
 );
 
 export default mongoose.model("RewardPool", RewardPoolSchema);
-
