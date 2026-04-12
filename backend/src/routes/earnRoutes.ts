@@ -9,15 +9,19 @@ import { rewardEngine } from "../services/rewardEngine";
 
 const router = express.Router();
 
+/* ================= DATE HELPER ================= */
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
 /* ==================================
    POST /api/earn (Daily Bonus)
 ================================== */
 router.post("/", auth, async (req: any, res) => {
   try {
     const userId = req.user.id;
+    const today = todayStr();
 
     /* ================= SETTINGS ================= */
-    const settings = await SystemSettings.findOne();
+    const settings = await SystemSettings.findOne().lean();
 
     if (settings?.rewardsPaused) {
       return res.status(403).json({
@@ -25,42 +29,25 @@ router.post("/", auth, async (req: any, res) => {
       });
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    /* ================= ATOMIC CLAIM CHECK ================= */
+    const existing = await UserDailyStats.findOne({
+      userId,
+      date: today,
+      dailyBonusClaimed: true,
+    }).lean();
 
-    /* ================= ATOMIC LOCK ================= */
-    const stats = await UserDailyStats.findOneAndUpdate(
-      {
-        userId,
-        date: today,
-        dailyBonusClaimed: { $ne: true }, // 🔥 only allow if not claimed
-      },
-      {
-        $setOnInsert: {
-          userId,
-          date: today,
-        },
-        $set: {
-          dailyBonusClaimed: true,
-          lastClaimAt: new Date(),
-        },
-      },
-      {
-        new: true,
-        upsert: true,
-      }
-    );
-
-    // ❌ Already claimed (lock failed)
-    if (!stats || stats.dailyBonusClaimed !== true) {
+    if (existing) {
       return res.status(403).json({
         message: "Daily bonus already claimed",
       });
     }
 
     /* ================= TRUST ================= */
-    const trust =
-      (await UserTrust.findOne({ userId })) ||
-      (await UserTrust.create({ userId }));
+    let trust = await UserTrust.findOne({ userId });
+
+    if (!trust) {
+      trust = await UserTrust.create({ userId });
+    }
 
     if (trust.score < 40) {
       return res.status(403).json({
@@ -74,7 +61,6 @@ router.post("/", auth, async (req: any, res) => {
         ? settings.beta.dailyBonusMinutes || 3
         : 3;
 
-    // 🔥 Trust multiplier
     let multiplier = 1;
     if (trust.score < 80) multiplier = 0.8;
     if (trust.score < 60) multiplier = 0.5;
@@ -88,40 +74,39 @@ router.post("/", auth, async (req: any, res) => {
       });
     }
 
-    /* ================= FAST RESPONSE ================= */
+    /* ================= 🚀 FAST RESPONSE ================= */
     res.json({
       success: true,
       earnedMinutes: MINUTES,
     });
 
-    /* ================= BACKGROUND PROCESS ================= */
+    /* ================= 🔥 BACKGROUND PROCESS ================= */
     (async () => {
       try {
-        const io = req.app.get("io");
-
+        /* ================= REWARD ================= */
         await rewardEngine({
           userId,
           minutes: MINUTES,
           source: "DAILY_BONUS",
-          io,
         });
 
+        /* ================= MARK CLAIMED ================= */
         await UserDailyStats.updateOne(
           { userId, date: today },
           {
+            $set: {
+              dailyBonusClaimed: true,
+              lastClaimAt: new Date(),
+            },
             $inc: {
               minutesEarned: MINUTES,
             },
-          }
+          },
+          { upsert: true }
         );
+
       } catch (err) {
         console.error("⚠️ Daily bonus background error:", err);
-
-        // rollback (optional)
-        await UserDailyStats.updateOne(
-          { userId, date: today },
-          { $set: { dailyBonusClaimed: false } }
-        );
       }
     })();
 
