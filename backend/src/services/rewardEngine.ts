@@ -33,6 +33,8 @@ export async function rewardEngine({
   session.startTransaction();
 
   try {
+    const userIdStr = userId.toString(); // 🔥 IMPORTANT FIX
+
     /* ================= EMISSION ================= */
     const emissionMultiplier = await getEmissionMultiplier();
 
@@ -44,24 +46,17 @@ export async function rewardEngine({
       throw new Error("Emission too low");
     }
 
-    /* ================= REWARD POOL ================= */
+    /* ================= POOL ================= */
     const pool = await RewardPool.findOne({ type: source }).session(session);
 
     if (!pool) throw new Error(`Reward pool not found: ${source}`);
-
-    if (pool.paused) {
-      throw new Error(`${source} rewards paused`);
-    }
+    if (pool.paused) throw new Error(`${source} rewards paused`);
 
     resetIfNewDay(pool);
 
-    if (pool.balanceATC < atcAmount) {
-      throw new Error("Pool depleted");
-    }
-
-    if (pool.spentTodayATC + atcAmount > pool.dailyLimitATC) {
+    if (pool.balanceATC < atcAmount) throw new Error("Pool depleted");
+    if (pool.spentTodayATC + atcAmount > pool.dailyLimitATC)
       throw new Error("Daily limit reached");
-    }
 
     /* ================= WALLET ================= */
     let wallet = await Wallet.findOne({ userId }).session(session);
@@ -80,9 +75,8 @@ export async function rewardEngine({
       ).then((res) => res[0]);
     }
 
-    /* ================= APPLY CHANGES ================= */
+    /* ================= APPLY ================= */
 
-    // Pool
     pool.balanceATC -= atcAmount;
     pool.spentTodayATC += atcAmount;
 
@@ -92,14 +86,13 @@ export async function rewardEngine({
 
     await pool.save({ session });
 
-    // Wallet
     wallet.balanceATC += atcAmount;
     wallet.totalMinutes += minutes;
     wallet.todayMinutes += minutes;
 
     await wallet.save({ session });
 
-    /* ================= TRANSACTION ================= */
+    /* ================= TX ================= */
     await Transaction.create(
       [
         {
@@ -117,20 +110,22 @@ export async function rewardEngine({
       { session }
     );
 
-    /* ================= COMMIT ================= */
     await session.commitTransaction();
     session.endSession();
 
-    /* ================= REAL-TIME PUSH ================= */
+    /* ================= REAL-TIME ================= */
 
-    pushWalletUpdate(userId, {
+    console.log("📤 Emitting wallet update →", userIdStr);
+
+    pushWalletUpdate(userIdStr, {
       balance: wallet.balanceATC,
       totalMinutes: wallet.totalMinutes,
       todayMinutes: wallet.todayMinutes,
+      minutes, // 🔥 IMPORTANT (frontend expects this)
       source,
     });
 
-    pushMinutes(userId, minutes, { source });
+    pushMinutes(userIdStr, minutes, { source });
 
     return {
       creditedMinutes: minutes,
