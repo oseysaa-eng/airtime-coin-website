@@ -31,6 +31,7 @@ import SystemSettings from "./src/models/SystemSettings";
 import { setupSocket } from "./src/sockets/socket";
 import { setupSupportSocket } from "./src/sockets/supportSocket";
 import { registerAdminEmitter } from "./src/utils/adminEmitter";
+import { ensurePools } from "./src/utils/initPools";
 
 /* MIDDLEWARE */
 import { apiLimiter } from "./src/middleware/rateLimiter";
@@ -247,6 +248,7 @@ const startServer = async () => {
     });
 
     await connectDB();
+    await ensurePools();
 
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 ATC Backend running on port ${PORT}`);
