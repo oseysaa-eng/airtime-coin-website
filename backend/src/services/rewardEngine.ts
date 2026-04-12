@@ -33,139 +33,149 @@ export async function rewardEngine({
   session.startTransaction();
 
   try {
-    const userIdStr = userId.toString();
+    const userIdStr = userId.toString(); // 🔥 IMPORTANT FIX
 
-    /* ================= EMISSION (FOR POOL ONLY) ================= */
-    const emissionMultiplier = await getEmissionMultiplier();
+    /* ================= EMISSION ================= */
+const emissionMultiplier = await getEmissionMultiplier();
 
-    let finalMinutes = minutes;
+let finalMinutes = minutes;
+let finalATC = Number(
+  (minutes * BASE_RATE * emissionMultiplier).toFixed(6)
+);
 
-    let requiredATC = Number(
-      (finalMinutes * BASE_RATE * emissionMultiplier).toFixed(6)
-    );
+if (finalATC <= 0) {
+  throw new Error("Emission too low");
+}
 
-    if (requiredATC <= 0) {
-      throw new Error("Emission too low");
-    }
+/* ================= POOL ================= */
+const pool = await RewardPool.findOne({ type: source }).session(session);
 
-    /* ================= POOL ================= */
-    const pool = await RewardPool.findOne({ type: source }).session(session);
+if (!pool) throw new Error(`Reward pool not found: ${source}`);
+if (pool.paused) throw new Error(`${source} rewards paused`);
 
-    if (!pool) throw new Error(`Reward pool not found: ${source}`);
-    if (pool.paused) throw new Error(`${source} rewards paused`);
+if (pool.balanceATC < 1) {
+  console.warn("⚠️ Pool drained — emergency refill");
 
-    resetIfNewDay(pool);
+  pool.balanceATC += 200000;
+  pool.paused = false;
 
-    /* 🔥 AUTO REFILL IF EMPTY */
-    if (pool.balanceATC < 1) {
-      console.warn("⚠️ Pool drained — emergency refill");
+  await pool.save({ session });
+}
 
-      pool.balanceATC += 200000;
-      pool.paused = false;
+resetIfNewDay(pool);
 
-      await pool.save({ session });
-    }
+/* 🔥 SCALING FIX */
+if (pool.balanceATC < finalATC) {
+  console.warn("⚠️ Pool low — scaling reward");
 
-    /* 🔥 SCALE REWARD IF LOW */
-    if (pool.balanceATC < requiredATC) {
-      console.warn("⚠️ Pool low — scaling reward");
+  const scaledATC = pool.balanceATC * 0.9;
 
-      const scaledATC = pool.balanceATC * 0.9;
+  finalMinutes = Math.floor(
+    scaledATC / (BASE_RATE * emissionMultiplier)
+  );
 
-      finalMinutes = Math.floor(
-        scaledATC / (BASE_RATE * emissionMultiplier)
-      );
+  if (finalMinutes <= 0) {
+  console.warn("⚠️ Pool critically empty — auto refill");
 
-      if (finalMinutes <= 0) {
-        console.warn("⚠️ Critical — forcing minimum reward");
+  pool.balanceATC += 100000; // 🔥 refill instantly
+  pool.paused = false;
 
-        finalMinutes = 1;
-      }
+  await pool.save({ session });
 
-      requiredATC = Number(
-        (finalMinutes * BASE_RATE * emissionMultiplier).toFixed(6)
-      );
-    }
+  finalMinutes = 1; // minimum reward
+  finalATC = Number(
+    (finalMinutes * BASE_RATE * emissionMultiplier).toFixed(6)
+  );
+}
+}
 
-    /* ================= WALLET ================= */
-    const wallet = await Wallet.findOneAndUpdate(
-      { userId },
-      {
-        $setOnInsert: {
-          userId,
-          balanceATC: 0,
-          totalMinutes: 0,
-          todayMinutes: 0,
-        },
-      },
-      {
-        new: true,
-        upsert: true,
-        session,
-      }
-    );
+/* ================= WALLET ================= */
+let wallet = await Wallet.findOneAndUpdate(
+  { userId },
+  {
+    $setOnInsert: {
+      userId,
+      balanceATC: 0,
+      totalMinutes: 0,
+      todayMinutes: 0,
+    },
+  },
+  {
+    new: true,
+    upsert: true,
+    session,
+  }
+);
 
-    /* ================= ATOMIC POOL UPDATE ================= */
-    const updatedPool = await RewardPool.findOneAndUpdate(
-      {
-        _id: pool._id,
-        balanceATC: { $gte: requiredATC },
-      },
-      {
-        $inc: {
-          balanceATC: -requiredATC,
-          spentTodayATC: requiredATC,
-        },
-      },
-      { new: true, session }
-    );
+/* ================= APPLY ================= */
 
-    if (!updatedPool) {
-      throw new Error("Pool depleted (atomic)");
-    }
+finalATC = Number(
+  (finalMinutes * BASE_RATE * emissionMultiplier).toFixed(6)
+);
 
-    /* ================= APPLY (MINUTES ONLY) ================= */
+// 🔒 ATOMIC POOL UPDATE
+const updatedPool = await RewardPool.findOneAndUpdate(
+  {
+    _id: pool._id,
+    balanceATC: { $gte: finalATC },
+  },
+  {
+    $inc: {
+      balanceATC: -finalATC,
+      spentTodayATC: finalATC,
+    },
+  },
+  { new: true, session }
+);
 
-    wallet.totalMinutes += finalMinutes;
-    wallet.todayMinutes += finalMinutes;
+if (!updatedPool) {
+  throw new Error("Pool depleted (atomic)");
+}
 
-    await wallet.save({ session });
+// Wallet
+wallet.totalMinutes += finalMinutes;
+wallet.todayMinutes += finalMinutes;
 
-    /* ================= TRANSACTION ================= */
-    await Transaction.create(
-      [
-        {
-          userId,
-          type: "EARN_MINUTES", // ✅ FIXED
-          source,
-          amount: finalMinutes, // ✅ MINUTES ONLY
-          meta: {
-            emissionMultiplier,
-            ...meta,
-          },
-        },
-      ],
-      { session }
-    );
+await wallet.save({ session });
 
-    /* ================= COMMIT ================= */
-    await session.commitTransaction();
-    session.endSession();
-
-    /* ================= REAL-TIME ================= */
-
-    pushWalletUpdate(userIdStr, {
-      totalMinutes: wallet.totalMinutes,
-      todayMinutes: wallet.todayMinutes,
-      minutes: finalMinutes,
+// TX
+await Transaction.create(
+  [
+    {
+      userId,
+      type: "EARN",
       source,
-    });
+      amount: finalATC,
+      meta: {
+        minutes: finalMinutes,
+        emissionMultiplier,
+        ...meta,
+      },
+    },
+  ],
+  { session }
+);
 
-    pushMinutes(userIdStr, finalMinutes, { source });
+// ✅ COMMIT (CRITICAL FIX)
+await session.commitTransaction();
+session.endSession();
 
-    return {
-      creditedMinutes: finalMinutes,
-    };
+/* ================= SOCKET ================= */
+pushWalletUpdate(userIdStr, {
+  totalMinutes: wallet.totalMinutes,
+  todayMinutes: wallet.todayMinutes,
+  minutes: finalMinutes,
+  source,
+});
+
+pushMinutes(userIdStr, finalMinutes, { source });
+
+return {
+  creditedMinutes: finalMinutes,
+  creditedATC: finalATC,
+  emissionMultiplier,
+  balance: wallet.balanceATC,
+};
 
   } catch (err) {
     await session.abortTransaction();
