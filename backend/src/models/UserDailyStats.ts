@@ -1,16 +1,15 @@
 import mongoose from "mongoose";
-
 const UserDailyStatsSchema = new mongoose.Schema(
   {
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
-    index: true
-  },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
 
     date: {
-      type: String, // YYYY-MM-DD
+      type: Date, // ✅ FIXED
       required: true,
       index: true,
     },
@@ -25,10 +24,10 @@ const UserDailyStatsSchema = new mongoose.Schema(
       default: 0,
     },
 
-      lastAdAt: {
-    type: Date,
-    default: null,
-  },
+    lastAdAt: {
+      type: Date,
+      default: null,
+    },
 
     minutesEarned: {
       type: Number,
@@ -37,6 +36,8 @@ const UserDailyStatsSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+
 
 UserDailyStatsSchema.index({ userId: 1, date: 1 }, { unique: true });
 

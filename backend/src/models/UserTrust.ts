@@ -7,10 +7,10 @@ export interface IUserTrust extends Document {
   score: number;
 
   flags: {
-    multiAccount: boolean;
-    emulator: boolean;
-    rapidSwitch: boolean;
-  };
+  multiAccount: { type: Boolean, default: false },
+  emulator: { type: Boolean, default: false },
+  rapidSwitch: { type: Boolean, default: false },
+},
 
   reasons?: string[];
 
@@ -60,11 +60,17 @@ const UserTrustSchema = new Schema<IUserTrust>(
 
     },
 
+
+      lastSeenAt: {
+    type: Date,
+    default: Date.now,
+  },
+
     reasons: [String],
 
     lastDecayAt: Date,
     lastRecoveryAt: Date,
-    lastSeenAt: Date,
+  
 
   },
   { timestamps: true }
