@@ -91,6 +91,12 @@ export default function HomeScreen() {
 
 
 
+  useFocusEffect(
+  useCallback(() => {
+    fetchDashboard();
+  }, [])
+);
+
    /* ================= INIT ================= */
 
   useEffect(() => {
@@ -115,20 +121,29 @@ useEffect(() => {
       console.log("✅ Socket listeners attached");
 
       /* ================= WALLET UPDATE ================= */
-      unsubWallet = await onSocketEvent("WALLET_UPDATE", (data) => {
-        console.log("🔥 WALLET_UPDATE:", data);
+unsubWallet = await onSocketEvent("WALLET_UPDATE", async (data) => {
+  console.log("🔥 WALLET_UPDATE:", data);
 
-        setDashboard((prev: any) => {
-          if (!prev) return prev;
+  setDashboard((prev: any) => {
+    if (!prev) return prev;
 
-          return {
-            ...prev,
-            balance: data.balance ?? prev.balance,
-            totalMinutes: data.totalMinutes ?? prev.totalMinutes,
-            todayMinutes: data.todayMinutes ?? prev.todayMinutes,
-          };
-        });
-      });
+    const minutesDelta = data.minutes || 0;
+
+    return {
+      ...prev,
+      balance: data.balance ?? prev.balance,
+      totalMinutes:
+        data.totalMinutes ??
+        (prev.totalMinutes || 0) + minutesDelta,
+      todayMinutes:
+        data.todayMinutes ??
+        (prev.todayMinutes || 0) + minutesDelta,
+    };
+  });
+
+  // ✅ 🔥 CRITICAL: refresh weekly data
+  fetchDashboard();
+});
 
       /* ================= MINUTES CREDIT ================= */
       unsubMinutes = await onSocketEvent("MINUTES_CREDIT", (data) => {
@@ -204,8 +219,9 @@ useEffect(() => {
 
  /* ================= CHART ================= */
 
-  const weeklyData = Array.isArray(dashboard.weeklyMinutes)
-    ? dashboard.weeklyMinutes.slice(0, 7)
+    const weeklyData =
+  dashboard?.weeklyMinutes?.length === 7
+    ? dashboard.weeklyMinutes
     : defaultChart;
 
   const chartData = {

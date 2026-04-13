@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import auth from "../middleware/authMiddleware";
 
 import EmissionState from "../models/EmissionState";
@@ -61,34 +62,55 @@ router.get("/", auth, async (req: any, res) => {
       }
     }
 
-    /* ================= WEEKLY (IMPROVED) ================= */
+/* ================= WEEKLY (FIXED) ================= */
 
-    const startOfWeek = new Date();
-    startOfWeek.setDate(startOfWeek.getDate() - 6);
-    startOfWeek.setHours(0, 0, 0, 0);
+const uid = new mongoose.Types.ObjectId(userId); // ✅ FIX
 
-    const weeklyData = await Transaction.aggregate([
-      {
-        $match: {
-          userId,
-          type: "EARN",
-          createdAt: { $gte: startOfWeek },
-        },
+const today = new Date();
+today.setHours(23, 59, 59, 999);
+
+const past = new Date();
+past.setDate(today.getDate() - 6);
+past.setHours(0, 0, 0, 0);
+
+const weeklyData = await Transaction.aggregate([
+  {
+    $match: {
+      userId: uid,
+      type: "EARN",
+      createdAt: {
+        $gte: past,
+        $lte: today,
       },
-      {
-        $group: {
-          _id: { $dayOfWeek: "$createdAt" },
-          total: { $sum: "$amount" },
-        },
-      },
-    ]);
+    },
+  },
+  {
+    $group: {
+      _id: { $dayOfWeek: "$createdAt" },
+      minutes: { $sum: "$meta.minutes" }, // ✅ FIX (REAL MINUTES)
+    },
+  },
+]);
 
-    const weeklyMinutes = [0, 0, 0, 0, 0, 0, 0];
+/* ================= FORMAT FULL WEEK ================= */
 
-    weeklyData.forEach((d: any) => {
-      const index = d._id === 1 ? 6 : d._id - 2;
-      weeklyMinutes[index] = d.total;
-    });
+const weekMap: any = {
+  1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0,
+};
+
+weeklyData.forEach((d: any) => {
+  weekMap[d._id] = d.minutes;
+});
+
+const weeklyMinutes = [
+  weekMap[2], // Mon
+  weekMap[3],
+  weekMap[4],
+  weekMap[5],
+  weekMap[6],
+  weekMap[7],
+  weekMap[1], // Sun
+];
 
     /* ================= RECENT ================= */
 

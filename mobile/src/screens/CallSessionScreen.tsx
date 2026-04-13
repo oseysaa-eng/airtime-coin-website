@@ -50,22 +50,25 @@ export default function CallMiningScreen() {
   const todayCallMinutes = weeklyCalls[todayIndex] || 0;
 
   /* ---------------- LOAD WEEKLY ---------------- */
+
   const loadWeeklyCalls = async () => {
-    try {
-      const res = await API.get("/api/call/weekly");
+  try {
+    const res = await API.get("/api/call/weekly");
 
-      const mapped = new Array(7).fill(0);
+    console.log("📊 Weekly API:", res.data);
 
-      res.data.forEach((d: any) => {
-        const day = new Date(d._id).getDay();
-        mapped[day] = d.minutes;
-      });
-
-      setWeeklyCalls(mapped);
-    } catch {
-      console.log("Weekly load error");
+    // ✅ NEW FORMAT
+    if (res.data?.weeklyMinutes) {
+      setWeeklyCalls(res.data.weeklyMinutes);
+    } else {
+      console.warn("⚠️ Invalid weekly format");
+      setWeeklyCalls([0,0,0,0,0,0,0]);
     }
-  };
+
+  } catch (err) {
+    console.log("❌ Weekly load error:", err?.message);
+  }
+};
 
   /* ---------------- REPORT SPAM ---------------- */
   const reportSpam = async () => {
