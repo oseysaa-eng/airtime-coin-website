@@ -15,15 +15,22 @@ router.post("/", auth, async (req: any, res) => {
   try {
     const userId = req.user.id;
     const today = todayStr();
-
     /* ================= SETTINGS ================= */
-    const settings = await SystemSettings.findOne().lean();
+let settings = await SystemSettings.findOne();
 
-    if (settings?.rewardsPaused) {
-      return res.status(403).json({
-        message: "Rewards paused",
-      });
-    }
+if (!settings) {
+  settings = await SystemSettings.create({
+    rewardsPaused: false,
+  });
+}
+
+console.log("⚙️ RewardsPaused:", settings.rewardsPaused);
+
+if (settings.rewardsPaused === true) {
+  return res.status(403).json({
+    message: "Rewards paused",
+  });
+}
 
     /* ================= 🔒 ATOMIC CLAIM LOCK ================= */
     const stats = await UserDailyStats.findOneAndUpdate(
