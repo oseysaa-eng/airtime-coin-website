@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import auth from "../middleware/authMiddleware";
 
 import CallSession from "../models/CallSession";
@@ -108,36 +109,63 @@ router.post("/auto-credit", auth, async (req: any, res) => {
 ============================================ */
 router.get("/weekly", auth, async (req: any, res) => {
   try {
-    const uid = req.user.id;
+    const uid = new mongoose.Types.ObjectId(req.user.id); // ✅ FIX
+
+    /* ================= LAST 7 DAYS ================= */
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+
+    const past = new Date();
+    past.setDate(today.getDate() - 6);
+    past.setHours(0, 0, 0, 0);
 
     const data = await CallSession.aggregate([
       {
         $match: {
           userId: uid,
-          status: "completed", // ✅ FIXED
+          status: "completed",
+          createdAt: {
+            $gte: past,
+            $lte: today,
+          },
         },
       },
       {
         $group: {
           _id: {
-            $dateToString: {
-              format: "%Y-%m-%d",
-              date: "$createdAt",
-            },
+            $dayOfWeek: "$createdAt", // 1 = Sunday
           },
           minutes: { $sum: "$creditedMinutes" },
         },
       },
-      { $sort: { _id: 1 } },
     ]);
+
+    /* ================= FORMAT FULL WEEK ================= */
+    const weekMap: any = {
+      1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0,
+    };
+
+    data.forEach((d) => {
+      weekMap[d._id] = d.minutes;
+    });
+
+    const ordered = [
+      weekMap[2], // Mon
+      weekMap[3], // Tue
+      weekMap[4],
+      weekMap[5],
+      weekMap[6],
+      weekMap[7],
+      weekMap[1], // Sun
+    ];
 
     return res.json({
       success: true,
-      data,
+      weeklyMinutes: ordered,
     });
 
   } catch (err) {
-    console.error("WEEKLY ERROR:", err);
+    console.error("❌ WEEKLY ERROR:", err);
     res.status(500).json({ message: "Failed to load weekly data" });
   }
 });
