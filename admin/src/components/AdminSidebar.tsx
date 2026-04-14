@@ -1,18 +1,17 @@
 "use client";
 
-import { adminLogout } from "@/lib/logout";
+import { adminLogout } from "@/lib/adminAuth";
 
 export default function AdminSidebar() {
   return (
     <aside className="w-64 border-r p-4">
       <nav className="space-y-3">
-        <a href="/dashboard">Dashboard</a>
-        <a href="/users">Users</a>
-        <a href="/system">System</a>
-        <a href="/analytics" className="block py-2">
-  📊 Analytics
-</a>
-
+        <a href="/admin/dashboard">Dashboard</a>
+        <a href="/admin/users">Users</a>
+        <a href="/admin/system">System</a>
+        <a href="/admin/analytics" className="block py-2">
+          📊 Analytics
+        </a>
 
         <button
           onClick={adminLogout}
@@ -24,5 +23,3 @@ export default function AdminSidebar() {
     </aside>
   );
 }
-
-

@@ -7,7 +7,10 @@ import { useEffect, useState } from "react";
 import IncidentBanner from "@/components/admin/IncidentBanner";
 import adminApi from "@/lib/adminApi";
 import { adminLogout } from "@/lib/adminAuth";
-import { getAdminSocket } from "@/lib/adminSocket";
+
+import { onAdminSocket } from "@/lib/adminSocket";
+
+
 
 /* ======================================================
    NAVIGATION
@@ -72,13 +75,19 @@ export default function AdminLayout({
 
   /* ================= AUTH GUARD ================= */
 
-  useEffect(() => {
-    const token = localStorage.getItem("adminToken");
+  const [checked, setChecked] = useState(false);
 
-    if (!token && pathname !== "/admin/login") {
-      router.replace("/admin/login");
-    }
-  }, [pathname, router]);
+useEffect(() => {
+  const token = localStorage.getItem("adminToken");
+
+  if (!token && pathname !== "/admin/login") {
+    router.replace("/admin/login");
+  } else {
+    setChecked(true);
+  }
+}, [pathname]);
+
+if (!checked && pathname !== "/admin/login") return null;
 
   /* ================= SYSTEM SETTINGS ================= */
 
@@ -94,39 +103,48 @@ export default function AdminLayout({
 
 
   useEffect(() => {
-
-  const socket = getAdminSocket();
-
-  socket.on("device.flagged", () => {
+  const unsub1 = onAdminSocket("device.flagged", () => {
     console.log("Device flagged");
+
+    // 🔥 refresh summary
+    adminApi.get("/devices/summary").then(res =>
+      setDeviceSummary(res.data)
+    );
   });
 
-  socket.on("device.blocked", () => {
+  const unsub2 = onAdminSocket("device.blocked", () => {
     console.log("Device blocked");
+
+    adminApi.get("/devices/summary").then(res =>
+      setDeviceSummary(res.data)
+    );
   });
 
-  socket.on("device.trusted", () => {
+  const unsub3 = onAdminSocket("device.trusted", () => {
     console.log("Device trusted");
+
+    adminApi.get("/devices/summary").then(res =>
+      setDeviceSummary(res.data)
+    );
   });
 
   return () => {
-    socket.off("device.flagged");
-    socket.off("device.blocked");
-    socket.off("device.trusted");
+    unsub1();
+    unsub2();
+    unsub3();
   };
-
 }, []);
 
   /* ================= DEVICE SNAPSHOT ================= */
 
-  useEffect(() => {
+useEffect(() => {
+  if (pathname === "/admin/login") return;
 
   adminApi
     .get("/devices/summary")
     .then(res => setDeviceSummary(res.data))
     .catch(() => {});
-
-}, []);
+}, [pathname]);
 
   /* ================= LOGIN PAGE ================= */
 
@@ -135,6 +153,8 @@ export default function AdminLayout({
   }
 
   /* ================= UI ================= */
+
+  
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc]">
@@ -153,7 +173,7 @@ export default function AdminLayout({
         {/* NAV */}
         <nav className="flex-1 px-4 py-6 space-y-1">
           {NAV_ITEMS.map(item => {
-            const active = pathname.startsWith(item.href);
+            const active = pathname === item.href || pathname.startsWith(item.href + "/");
 
             return (
               <Link

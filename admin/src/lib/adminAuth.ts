@@ -1,14 +1,13 @@
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+export const adminLogout = () => {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("adminToken"); // ✅ correct storage
 
-export function useRequireAdmin() {
-  const router = useRouter();
+    // 🔥 optional: clear socket
+    try {
+      const socket = (window as any).__adminSocket;
+      socket?.disconnect?.();
+    } catch {}
 
-  useEffect(() => {
-    const token = localStorage.getItem("adminToken");
-
-    if (!token) {
-      router.replace("/admin/login");
-    }
-  }, []);
-}
+    window.location.href = "/admin/login";
+  }
+};
