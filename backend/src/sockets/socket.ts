@@ -10,34 +10,42 @@ export function setupSocket(io: Server) {
   ioInstance = io;
 
   /* ================= AUTH ================= */
+
   io.use((socket: any, next) => {
-    try {
-      const token = socket.handshake.auth?.token;
+  try {
+    const token = socket.handshake.auth?.token;
 
-      if (!token) {
-        console.log("❌ No token provided");
-        return next(new Error("Unauthorized"));
-      }
-
-      if (!process.env.JWT_SECRET) {
-        throw new Error("JWT_SECRET not set");
-      }
-
-      const decoded: any = jwt.verify(token, process.env.JWT_SECRET);
-
-      if (!decoded?.id) {
-        return next(new Error("Invalid token"));
-      }
-
-      socket.userId = decoded.id.toString(); // 🔥 FIX
-      socket.role = decoded.role || "user";
-
-      next();
-    } catch (err: any) {
-      console.log("❌ Socket auth failed:", err.message);
-      next(new Error("Unauthorized"));
+    if (!token) {
+      console.log("❌ No token provided");
+      return next(new Error("Unauthorized"));
     }
-  });
+
+    let decoded: any = null;
+
+    // 🔥 TRY ADMIN TOKEN FIRST
+    try {
+      decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET!);
+      socket.role = "admin";
+      console.log("👑 Admin authenticated");
+    } catch (err) {
+      // 🔥 FALLBACK TO USER TOKEN
+      decoded = jwt.verify(token, process.env.JWT_SECRET!);
+      socket.role = "user";
+      console.log("👤 User authenticated");
+    }
+
+    if (!decoded?.id) {
+      return next(new Error("Invalid token"));
+    }
+
+    socket.userId = decoded.id.toString();
+
+    next();
+  } catch (err: any) {
+    console.log("❌ Socket auth failed:", err.message);
+    next(new Error("Unauthorized"));
+  }
+});
 
   /* ================= CONNECTION ================= */
   io.on("connection", (socket: any) => {
