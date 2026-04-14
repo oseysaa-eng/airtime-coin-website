@@ -10,44 +10,40 @@ const adminApi = axios.create({
 });
 
 /* REQUEST INTERCEPTOR */
-
 adminApi.interceptors.request.use((config) => {
-
   if (typeof window !== "undefined") {
-
     const token = localStorage.getItem("adminToken");
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      console.warn("⚠️ No admin token found");
     }
-
   }
 
   return config;
-
 });
 
 /* RESPONSE INTERCEPTOR */
-
 adminApi.interceptors.response.use(
   (res) => res,
-
   (err) => {
+    const status = err.response?.status;
 
-    if (err.response?.status === 401) {
+    if (status === 401) {
+      console.warn("❌ Unauthorized — clearing session");
 
       if (typeof window !== "undefined") {
-
         localStorage.removeItem("adminToken");
 
-        window.location.href = "/admin/login";
-
+        // 🔥 prevent redirect loop
+        if (!window.location.pathname.includes("/admin/login")) {
+          window.location.href = "/admin/login";
+        }
       }
-
     }
 
     return Promise.reject(err);
-
   }
 );
 
