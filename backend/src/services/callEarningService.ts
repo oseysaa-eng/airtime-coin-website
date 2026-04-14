@@ -1,14 +1,9 @@
 import mongoose from "mongoose";
 import CallSession from "../models/CallSession";
 import { runCallFraudChecks } from "./callFraudEngine";
-import { calculateCallReward } from "./callRewardService";
-import { creditUser } from "./creditService";
+import { rewardEngine } from "./rewardEngine";
 import { notifyUser } from "./notifyUser";
-import {
-  emitAdminEvent,
-  pushMinutes,
-  pushWalletUpdate,
-} from "../sockets/socket";
+import { emitAdminEvent, pushMinutes } from "../sockets/socket";
 
 const MIN_DURATION = 30;
 
@@ -22,7 +17,7 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
     const session = await CallSession.findOneAndUpdate(
       {
         sessionId,
-        status: { $in: ["pending", "processing"] }, // 🔥 allow recovery
+        status: { $in: ["active", "processing"] }, // ✅ FIXED
       },
       {
         status: "processing",
@@ -32,6 +27,13 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
 
     if (!session) {
       console.log("⚠️ Already processed:", sessionId);
+      await mongoSession.abortTransaction();
+      return;
+    }
+
+    /* ================= DUPLICATE GUARD ================= */
+    if (session.creditedMinutes > 0) {
+      console.log("⚠️ Already rewarded:", sessionId);
       await mongoSession.abortTransaction();
       return;
     }
@@ -78,8 +80,8 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
       return;
     }
 
-    /* ================= REWARD ================= */
-    const minutes = calculateCallReward(duration);
+    /* ================= CALCULATE ================= */
+    const minutes = Math.floor(duration / 60); // ✅ simple safe logic
 
     if (minutes <= 0) {
       session.status = "rejected";
@@ -95,38 +97,27 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
       return;
     }
 
-    /* ================= CREDIT ================= */
-    const credit = await creditUser(
-      session.userId,
-      minutes,
-      "CALL",
-      mongoSession // 🔥 pass session for atomic update
-    );
-
-    /* ================= UPDATE SESSION ================= */
-    session.status = "completed";
+    /* ================= SAVE SESSION ================= */
     session.creditedMinutes = minutes;
-    session.trustScore = fraud.risk || 0;
+    session.status = "completed";
     session.endedAt = new Date();
 
     await session.save({ session: mongoSession });
 
     await mongoSession.commitTransaction();
+    mongoSession.endSession();
 
-    console.log("💰 Minutes credited:", minutes);
+    console.log("💰 Minutes ready:", minutes);
 
-    /* ================= 🚀 REALTIME PUSH ================= */
+    /* ================= REWARD ENGINE ================= */
+    const reward = await rewardEngine({
+      userId: session.userId.toString(),
+      minutes,
+      source: "CALL_SESSION",
+      meta: { sessionId },
+    });
 
-    const safePayload = {
-      balance: credit?.balance ?? 0,
-      minutes: credit?.minutes ?? 0,
-      atc: credit?.atc ?? 0,
-    };
-
-    // 🔥 Wallet sync
-    pushWalletUpdate(session.userId.toString(), safePayload);
-
-    // 🔥 Smooth animation event
+    /* ================= SOCKET ================= */
     pushMinutes(session.userId.toString(), minutes, {
       type: "CALL",
       sessionId,
@@ -152,15 +143,18 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
       );
     }
 
+    return reward;
+
   } catch (err: any) {
     await mongoSession.abortTransaction();
+    mongoSession.endSession();
 
     console.error("❌ EARNING ERROR:", err);
 
-    // 🔥 RECOVERY: reset stuck session
+    /* 🔥 RECOVERY */
     await CallSession.findOneAndUpdate(
       { sessionId, status: "processing" },
-      { status: "pending" }
+      { status: "active" }
     );
 
     emitAdminEvent("SYSTEM_ERROR", {
@@ -168,8 +162,5 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
       sessionId,
       error: err.message,
     });
-
-  } finally {
-    mongoSession.endSession();
   }
 };

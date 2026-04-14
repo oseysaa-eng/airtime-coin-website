@@ -1,11 +1,71 @@
-const MAX_SESSION_SECONDS = 20 * 60; // 20 mins
-const MIN_SESSION_SECONDS = 30;      // 30 sec
-const MAX_REWARD_MINUTES = 5;
+import CallSession from "../models/CallSession";
+import { rewardEngine } from "./rewardEngine";
 
-export function calculateCallReward(durationSec: number): number {
-  if (durationSec < MIN_SESSION_SECONDS) return 0;
+export async function processCallReward(sessionId: string) {
+  try {
+    const session = await CallSession.findOne({ sessionId });
 
-  const rewardedMinutes = Math.floor(durationSec / 120); // 1 min per 2 mins
+    if (!session) throw new Error("Session not found");
 
-  return Math.min(rewardedMinutes, MAX_REWARD_MINUTES);
+    /* ================= DUPLICATE GUARD ================= */
+    if (session.status === "completed") {
+      return { success: true, duplicate: true };
+    }
+
+    if (session.status === "processing") {
+      return { success: false, message: "Already processing" };
+    }
+
+    /* ================= LOCK ================= */
+    session.status = "processing";
+    await session.save();
+
+    /* ================= VALIDATION ================= */
+    const duration = session.durationSeconds || 0;
+
+    if (duration < 10) {
+      session.status = "rejected";
+      await session.save();
+
+      return { success: false, message: "Call too short" };
+    }
+
+    /* ================= CONVERT TO MINUTES ================= */
+    const minutes = Math.floor(duration / 60);
+
+    if (minutes <= 0) {
+      session.status = "rejected";
+      await session.save();
+
+      return { success: false, message: "No rewardable minutes" };
+    }
+
+    /* ================= REWARD ================= */
+    const result = await rewardEngine({
+      userId: session.userId.toString(),
+      minutes,
+      source: "CALL_SESSION",
+      meta: {
+        sessionId,
+        duration,
+        phoneNumber: session.phoneNumber,
+      },
+    });
+
+    /* ================= UPDATE SESSION ================= */
+    session.creditedMinutes = result.creditedMinutes;
+    session.status = "completed";
+    session.processedAt = new Date();
+
+    await session.save();
+
+    return {
+      success: true,
+      minutes: result.creditedMinutes,
+    };
+
+  } catch (err) {
+    console.error("❌ CALL REWARD ERROR:", err);
+    throw err;
+  }
 }

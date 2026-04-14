@@ -9,7 +9,7 @@ import { rewardEngine } from "../services/rewardEngine";
 
 const router = express.Router();
 
-/* ✅ CORRECT DATE HELPER */
+/* ✅ DATE HELPER */
 export const getToday = () => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -19,7 +19,7 @@ export const getToday = () => {
 router.post("/", auth, async (req: any, res) => {
   try {
     const userId = req.user.id;
-    const today = getToday(); // ✅ FIXED
+    const today = getToday();
 
     /* ================= SETTINGS ================= */
     let settings = await SystemSettings.findOne();
@@ -30,39 +30,43 @@ router.post("/", auth, async (req: any, res) => {
       });
     }
 
-    console.log("⚙️ RewardsPaused:", settings.rewardsPaused);
-
     if (settings.rewardsPaused === true) {
       return res.status(403).json({
         message: "Rewards paused",
       });
     }
 
-    /* ================= 🔒 ATOMIC LOCK ================= */
-    const stats = await UserDailyStats.findOneAndUpdate(
-      {
-        userId,
-        date: today,
-        dailyBonusClaimed: { $ne: true },
-      },
+    /* ================= ENSURE DOC EXISTS ================= */
+    await UserDailyStats.updateOne(
+      { userId, date: today },
       {
         $setOnInsert: {
           userId,
           date: today,
+          dailyBonusClaimed: false,
         },
+      },
+      { upsert: true }
+    );
+
+    /* ================= ATOMIC CLAIM ================= */
+    const claim = await UserDailyStats.findOneAndUpdate(
+      {
+        userId,
+        date: today,
+        dailyBonusClaimed: false, // ✅ SAFE CONDITION
+      },
+      {
         $set: {
           dailyBonusClaimed: true,
           lastClaimAt: new Date(),
         },
       },
-      {
-        new: true,
-        upsert: true,
-      }
+      { new: true }
     );
 
     /* ❌ Already claimed */
-    if (!stats) {
+    if (!claim) {
       return res.status(403).json({
         message: "Daily bonus already claimed",
       });
@@ -98,20 +102,13 @@ router.post("/", auth, async (req: any, res) => {
 
     const MINUTES = Math.floor(baseMinutes * multiplier);
 
-    if (MINUTES <= 0) {
-      return res.json({
-        success: true,
-        earnedMinutes: 0,
-      });
-    }
-
-    /* ================= 🚀 RESPONSE ================= */
+    /* ================= RESPONSE ================= */
     res.json({
       success: true,
       earnedMinutes: MINUTES,
     });
 
-    /* ================= 🔥 BACKGROUND ================= */
+    /* ================= BACKGROUND ================= */
     (async () => {
       try {
         await rewardEngine({
@@ -132,10 +129,12 @@ router.post("/", auth, async (req: any, res) => {
       } catch (err: any) {
         console.error("❌ Daily bonus error:", err.message);
 
-        // rollback
+        // 🔥 rollback ONLY if reward failed
         await UserDailyStats.updateOne(
           { userId, date: today },
-          { $set: { dailyBonusClaimed: false } }
+          {
+            $set: { dailyBonusClaimed: false },
+          }
         );
       }
     })();

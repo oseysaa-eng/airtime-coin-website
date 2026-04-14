@@ -1,12 +1,12 @@
 import CallSession from "../models/CallSession";
-import { processCallEarning } from "../services/callEarningService";
+import { processCallReward } from "../services/callRewardService";
 
 export const registerCallHandlers = (socket: any) => {
   const userId = socket.userId;
 
   if (!userId) {
     console.log("❌ No userId in socket");
-    return; // 🔥 DO NOT CRASH
+    return;
   }
 
   /* ================= CALL START ================= */
@@ -17,40 +17,71 @@ export const registerCallHandlers = (socket: any) => {
       await CallSession.findOneAndUpdate(
         { sessionId },
         {
-          userId,
-          phoneNumber: number,
-          status: "pending",
-          startedAt: new Date(),
+          $setOnInsert: {
+            userId,
+            sessionId,
+            phoneNumber: number,
+            startedAt: new Date(),
+            status: "active", // ✅ FIXED
+          },
         },
-        { upsert: true }
+        { upsert: true, new: true }
       );
 
       console.log("✅ CALL START:", sessionId);
     } catch (e) {
-      console.error("CALL START ERROR:", e);
+      console.error("❌ CALL START ERROR:", e);
     }
   });
 
   /* ================= CALL END ================= */
-  socket.on("call_end", async ({ sessionId, duration }) => {
+  socket.on("CALL_ENDED", async (data: any) => {
     try {
+      const { sessionId, duration } = data;
+
       if (!sessionId) return;
 
-      const session = await CallSession.findOne({ sessionId });
+      console.log("📞 CALL ENDED:", sessionId, duration);
 
-      if (!session || session.status !== "pending") return;
+      /* ================= FETCH SESSION ================= */
+      const session = await CallSession.findOne({
+        sessionId,
+        userId, // ✅ SECURITY FIX
+      });
 
-      session.durationSeconds = duration;
+      if (!session) {
+        console.warn("⚠️ Session not found");
+        return;
+      }
+
+      /* ================= DUPLICATE GUARD ================= */
+      if (session.status === "completed") {
+        console.log("⚠️ Already completed:", sessionId);
+        return;
+      }
+
+      if (session.status === "processing") {
+        console.log("⚠️ Already processing:", sessionId);
+        return;
+      }
+
+      /* ================= VALIDATE DURATION ================= */
+      const safeDuration = Math.max(0, Number(duration) || 0);
+
+      /* ================= UPDATE SESSION ================= */
+      session.durationSeconds = safeDuration;
       session.endedAt = new Date();
+      session.status = "processing"; // 🔒 LOCK
+
       await session.save();
 
-      console.log("✅ CALL END:", sessionId);
+      /* ================= PROCESS REWARD ================= */
+      const result = await processCallReward(sessionId);
 
-      // 🔥 FIXED (you had wrong param)
-      await processCallEarning(sessionId);
+      console.log("🎯 Call reward result:", result);
 
-    } catch (e) {
-      console.error("CALL END ERROR:", e);
+    } catch (err) {
+      console.error("❌ CALL END ERROR:", err);
     }
   });
 };
