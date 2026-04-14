@@ -127,13 +127,15 @@ export const initCallMining = (onStart?: any, onEnd?: any) => {
     return;
   }
 
+  if (!duration || duration < 5) {
+    console.log("⚠️ Invalid duration");
+    return;
+  }
+
   const sessionId = activeSessionId;
 
   console.log("🛑 Ending session:", sessionId, "Duration:", duration);
 
-  /* =============================
-     EMIT TO BACKEND (ONLY SOURCE OF TRUTH)
-  ============================= */
   try {
     const socket = await getSocket();
 
@@ -143,30 +145,30 @@ export const initCallMining = (onStart?: any, onEnd?: any) => {
         duration,
         number: currentNumber,
       });
-
-      console.log("🚀 call_end sent");
     } else {
-      console.log("⚠️ Socket not connected (end)");
+      console.log("⚠️ Socket not connected → retrying...");
+
+      socket?.once("connect", () => {
+        socket.emit("call_end", {
+          sessionId,
+          duration,
+          number: currentNumber,
+        });
+      });
     }
   } catch (e) {
     console.log("Socket end error:", e);
   }
 
-  /* =============================
-     STOP OVERLAY
-  ============================= */
   setTimeout(() => {
     try {
       CallDetector.stopOverlay();
     } catch {}
-  }, 800);
 
-  /* =============================
-     RESET STATE
-  ============================= */
-  activeSessionId = null;
-  currentNumber = null;
-  isOverlayRunning = false;
+    activeSessionId = null;
+    currentNumber = null;
+    isOverlayRunning = false;
+  }, 500);
 
   onEnd && onEnd(duration);
 });
