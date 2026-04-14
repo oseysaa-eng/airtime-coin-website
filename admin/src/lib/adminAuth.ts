@@ -1,14 +1,14 @@
-export function requireAdmin() {
-  if (typeof window === "undefined") return;
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-  const token = localStorage.getItem("adminToken");
-  if (!token) {
-    window.location.href = "/admin/login";
-  }
-}
+export function useRequireAdmin() {
+  const router = useRouter();
 
-export function adminLogout() {
-  localStorage.removeItem("adminToken");
-  window.location.href = "/admin/login";
+  useEffect(() => {
+    const token = localStorage.getItem("adminToken");
+
+    if (!token) {
+      router.replace("/admin/login");
+    }
+  }, []);
 }
- 
