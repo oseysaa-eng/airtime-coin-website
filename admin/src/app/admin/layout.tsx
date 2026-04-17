@@ -90,65 +90,44 @@ useEffect(() => {
 
 if (!checked && pathname !== "/admin/login") return null;
 
+useEffect(() => {
+  const token = localStorage.getItem("adminToken");
+
+  if (token) {
+    connectAdminSocket(); // ✅ ensures socket exists
+  }
+}, []);
+
   /* ================= SYSTEM SETTINGS ================= */
 
   useEffect(() => {
-    if (pathname === "/admin/login") return;
+  if (pathname === "/admin/login") return;
 
-    adminApi
-      .get("/system")
-      .then(res => setSettings(res.data.settings))
-      .catch(() => {});
-  }, [pathname]);
+  let timeout: any;
 
+  const refresh = () => {
+    // 🔥 debounce API calls
+    clearTimeout(timeout);
 
-  useEffect(() => {
-  const unsub1 = onAdminSocket("device.flagged", () => {
-    console.log("Device flagged");
+    timeout = setTimeout(() => {
+      adminApi
+        .get("/devices/summary")
+        .then(res => setDeviceSummary(res.data))
+        .catch(() => {});
+    }, 300);
+  };
 
-    // 🔥 refresh summary
-    adminApi.get("/devices/summary").then(res =>
-      setDeviceSummary(res.data)
-    );
-  });
-
-  const unsub2 = onAdminSocket("device.blocked", () => {
-    console.log("Device blocked");
-
-    adminApi.get("/devices/summary").then(res =>
-      setDeviceSummary(res.data)
-    );
-  });
-
-  const unsub3 = onAdminSocket("device.trusted", () => {
-    console.log("Device trusted");
-
-    adminApi.get("/devices/summary").then(res =>
-      setDeviceSummary(res.data)
-    );
-  });
+  const unsub1 = onAdminSocket("device.flagged", refresh);
+  const unsub2 = onAdminSocket("device.blocked", refresh);
+  const unsub3 = onAdminSocket("device.trusted", refresh);
 
   return () => {
     unsub1();
     unsub2();
     unsub3();
+    clearTimeout(timeout);
   };
-}, []);
-
-
-useEffect(() => {
-  const socket = connectAdminSocket();
-
-  if (!socket) return;
-
-  socket.on("device.flagged", () => {
-    console.log("Device flagged");
-  });
-
-  return () => {
-    socket.off("device.flagged");
-  };
-}, []);
+}, [pathname]);
 
   /* ================= DEVICE SNAPSHOT ================= */
 

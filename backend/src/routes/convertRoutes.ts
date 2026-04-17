@@ -7,6 +7,7 @@ import SystemSettings from "../models/SystemSettings";
 import Transaction from "../models/Transaction";
 import UserTrust from "../models/UserTrust";
 import Wallet from "../models/Wallet";
+import SystemWallet from "../models/SystemWallet";
 
 import { resetIfNewDay } from "../utils/resetDailyCounter";
 import { getDynamicRate, runEmissionHalvingIfNeeded } from "../services/emissionEngine";
@@ -100,39 +101,51 @@ router.post("/", auth, async (req: any, res) => {
     }
 
     /* ================= EMISSION ================= */
-    await runEmissionHalvingIfNeeded();
 
     const rate = await getDynamicRate();
 
-    let atcAmount = Number((minutes * rate).toFixed(6));
+    const PROFIT_PERCENT = 0.1;
 
-    if (atcAmount <= 0) {
+    // total value
+    const grossATC = minutes * rate;
+
+    // user gets less
+    let userATC = Number((grossATC * (1 - PROFIT_PERCENT)).toFixed(6));
+
+    // profit
+    const profitATC = Number((grossATC * PROFIT_PERCENT).toFixed(6));
+
+    if (grossATC <= 0) {
       throw new Error("Too small");
     }
 
-    /* ================= TREASURY PROTECTION ================= */
-    if (pool.spentTodayATC + atcAmount > pool.dailyLimitATC) {
+    /* ================= TREASURY ================= */
+
+    if (pool.spentTodayATC + grossATC > pool.dailyLimitATC) {
       throw new Error("Daily pool exhausted");
     }
 
-    if (pool.balanceATC < atcAmount) {
-      // 🔥 AUTO SCALE instead of reject
+    if (pool.balanceATC < grossATC) {
+      // 🔥 scale safely
       const scaledATC = pool.balanceATC * 0.9;
 
-      atcAmount = scaledATC;
+      userATC = Number((scaledATC * (1 - PROFIT_PERCENT)).toFixed(6));
     }
 
     /* ================= APPLY ================= */
 
     wallet.totalMinutes -= minutes;
-    wallet.balanceATC += atcAmount;
+
+    wallet.balanceATC += userATC;
     wallet.convertedTodayMinutes += minutes;
     wallet.lastConversionAt = new Date();
 
+
+
     await wallet.save({ session });
 
-    pool.balanceATC -= atcAmount;
-    pool.spentTodayATC += atcAmount;
+    pool.balanceATC -= grossATC;
+    pool.spentTodayATC += grossATC;
 
     if (pool.balanceATC < pool.dailyLimitATC * 2) {
       pool.paused = true;
@@ -142,12 +155,14 @@ router.post("/", auth, async (req: any, res) => {
 
     /* ================= TRANSACTION ================= */
 
+    
+
     await Transaction.create(
       [
         {
           userId,
           type: "CONVERT",
-          amount: atcAmount,
+          amount: userATC,
           source: "MINUTES",
           meta: {
             minutes,
@@ -158,14 +173,25 @@ router.post("/", auth, async (req: any, res) => {
       ],
       { session }
     );
-
+    
+          const systemWallet = await SystemWallet.findOneAndUpdate(
+    {},
+    {
+      $inc: {
+        totalProfitATC: profitATC,
+        totalConversions: 1,
+      },
+    },
+    { upsert: true, new: true, session }
+  );
+  
     await session.commitTransaction();
     session.endSession();
 
     return res.json({
       success: true,
       minutesConverted: minutes,
-      atcReceived: atcAmount,
+      atcReceived: userATC,
       rate,
       remainingDailyMinutes: maxMinutes - wallet.convertedTodayMinutes,
     });
