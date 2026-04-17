@@ -9,6 +9,7 @@ import adminApi from "@/lib/adminApi";
 import { adminLogout } from "@/lib/adminAuth";
 
 import { onAdminSocket } from "@/lib/adminSocket";
+import { connectAdminSocket } from "@/lib/adminSocket";
 
 
 
@@ -101,7 +102,6 @@ if (!checked && pathname !== "/admin/login") return null;
   }, [pathname]);
 
 
-
   useEffect(() => {
   const unsub1 = onAdminSocket("device.flagged", () => {
     console.log("Device flagged");
@@ -132,6 +132,21 @@ if (!checked && pathname !== "/admin/login") return null;
     unsub1();
     unsub2();
     unsub3();
+  };
+}, []);
+
+
+useEffect(() => {
+  const socket = connectAdminSocket();
+
+  if (!socket) return;
+
+  socket.on("device.flagged", () => {
+    console.log("Device flagged");
+  });
+
+  return () => {
+    socket.off("device.flagged");
   };
 }, []);
 

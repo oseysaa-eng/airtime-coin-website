@@ -13,6 +13,7 @@ import {
 } from "../sockets/socket";
 
 const BASE_RATE = 0.0025;
+const MAX_DAILY_MINUTES = 50;
 
 export async function rewardEngine({
   userId,
@@ -109,11 +110,34 @@ let wallet = await Wallet.findOneAndUpdate(
 
 /* ================= APPLY ================= */
 
+// 🔥 DAILY LIMIT FIRST (CRITICAL FIX)
+const remaining = MAX_DAILY_MINUTES - wallet.todayMinutes;
+
+if (remaining <= 0) {
+  finalMinutes = 0;
+} else {
+  finalMinutes = Math.min(finalMinutes, remaining);
+}
+
+// 🚨 If nothing to give → STOP EARLY
+if (finalMinutes <= 0) {
+  await session.commitTransaction();
+  session.endSession();
+
+  return {
+    creditedMinutes: 0,
+    creditedATC: 0,
+    emissionMultiplier,
+    balance: wallet.balanceATC,
+  };
+}
+
+// 🔥 Recalculate ATC AFTER limit (CRITICAL FIX)
 finalATC = Number(
   (finalMinutes * BASE_RATE * emissionMultiplier).toFixed(6)
 );
 
-// 🔒 ATOMIC POOL UPDATE
+// 🔒 ATOMIC POOL UPDATE (NOW CORRECT)
 const updatedPool = await RewardPool.findOneAndUpdate(
   {
     _id: pool._id,
@@ -132,7 +156,7 @@ if (!updatedPool) {
   throw new Error("Pool depleted (atomic)");
 }
 
-// Wallet
+// Wallet update
 wallet.totalMinutes += finalMinutes;
 wallet.todayMinutes += finalMinutes;
 
@@ -155,6 +179,7 @@ await Transaction.create(
   ],
   { session }
 );
+
 
 // ✅ COMMIT (CRITICAL FIX)
 await session.commitTransaction();

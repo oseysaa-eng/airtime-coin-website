@@ -13,15 +13,21 @@
     },
 
     "android": {
-      "package": "com.airtimecoin.app",
-      "versionCode": 1,
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
-    },
+  "package": "com.airtimecoin.app",
+  "versionCode": 1,
+  "adaptiveIcon": {
+    "backgroundColor": "#E6F4FE",
+    "foregroundImage": "./assets/images/android-icon-foreground.png"
+  },
+  "edgeToEdgeEnabled": true,
+  "predictiveBackGestureEnabled": false,
+  "permissions": [
+    "INTERNET",
+    "ACCESS_NETWORK_STATE",
+    "READ_PHONE_STATE",
+    "READ_CALL_LOG"
+  ]
+},
 
     "web": {
       "output": "static",
@@ -39,12 +45,13 @@
           "backgroundColor": "#0ea5a4"
         }
       ],
+
       [
-        "react-native-google-mobile-ads",
-        {
-          "androidAppId": "ca-app-pub-1665828711086363~1162547584"
-        }
-      ],
+  "react-native-google-mobile-ads",
+  {
+    "android_app_id": "ca-app-pub-1665828711086363~1162547584"
+  }
+],
       "expo-font",
       "expo-web-browser"
     ],

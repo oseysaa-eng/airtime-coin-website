@@ -1,11 +1,12 @@
 import mongoose from "mongoose";
 import CallSession from "../models/CallSession";
+import UserTrust from "../models/UserTrust"; // ✅ FIXED
 import { runCallFraudChecks } from "./callFraudEngine";
 import { rewardEngine } from "./rewardEngine";
 import { notifyUser } from "./notifyUser";
 import { emitAdminEvent, pushMinutes } from "../sockets/socket";
 
-const MIN_DURATION = 30;
+const MIN_DURATION = 60;
 
 export const processCallEarning = async (sessionId: string, app?: any) => {
   const mongoSession = await mongoose.startSession();
@@ -17,7 +18,7 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
     const session = await CallSession.findOneAndUpdate(
       {
         sessionId,
-        status: { $in: ["active", "processing"] }, // ✅ FIXED
+        status: { $in: ["active", "processing"] },
       },
       {
         status: "processing",
@@ -80,14 +81,34 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
       return;
     }
 
+    /* ================= TRUST (OUTSIDE TRANSACTION) ================= */
+    await mongoSession.commitTransaction(); // ✅ release lock early
+
+    const trust = await UserTrust.findOne({ userId: session.userId });
+    const trustScore = trust?.score ?? 100;
+
     /* ================= CALCULATE ================= */
-    const minutes = Math.floor(duration / 60); // ✅ simple safe logic
+    const emissionMultiplier = 1;
+
+    const baseMinutes = Math.min(
+      Math.floor(duration / 60),
+      5
+    );
+
+    let trustMultiplier = 1;
+    if (trustScore < 80) trustMultiplier = 0.7;
+    if (trustScore < 60) trustMultiplier = 0.4;
+    if (trustScore < 40) trustMultiplier = 0;
+
+    const minutes = Math.floor(
+      baseMinutes * trustMultiplier * emissionMultiplier
+    );
 
     if (minutes <= 0) {
-      session.status = "rejected";
-      await session.save({ session: mongoSession });
-
-      await mongoSession.commitTransaction();
+      await CallSession.updateOne(
+        { sessionId },
+        { status: "rejected" }
+      );
 
       emitAdminEvent("CALL_REJECTED", {
         sessionId,
@@ -97,19 +118,23 @@ export const processCallEarning = async (sessionId: string, app?: any) => {
       return;
     }
 
-    /* ================= SAVE SESSION ================= */
-    session.creditedMinutes = minutes;
-    session.status = "completed";
-    session.endedAt = new Date();
-
-    await session.save({ session: mongoSession });
-
-    await mongoSession.commitTransaction();
-    mongoSession.endSession();
+    /* ================= FINAL UPDATE ================= */
+    await CallSession.updateOne(
+      { sessionId },
+      {
+        creditedMinutes: minutes,
+        status: "completed",
+        endedAt: new Date(),
+      }
+    );
 
     console.log("💰 Minutes ready:", minutes);
 
     /* ================= REWARD ENGINE ================= */
+    if (minutes > 10) {
+      console.warn("⚠️ Suspicious high minutes:", minutes);
+    }
+
     const reward = await rewardEngine({
       userId: session.userId.toString(),
       minutes,

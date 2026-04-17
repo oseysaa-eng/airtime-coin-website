@@ -1,66 +1,69 @@
 import express from "express";
+import mongoose from "mongoose";
 import auth from "../middleware/authMiddleware";
+
 import ConversionPool from "../models/ConversionPool";
 import SystemSettings from "../models/SystemSettings";
 import Transaction from "../models/Transaction";
 import UserTrust from "../models/UserTrust";
 import Wallet from "../models/Wallet";
+
 import { resetIfNewDay } from "../utils/resetDailyCounter";
 import { getDynamicRate, runEmissionHalvingIfNeeded } from "../services/emissionEngine";
 
 const router = express.Router();
 
 router.post("/", auth, async (req: any, res) => {
-  try {
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-    const uid = req.user.id;
+  try {
+    const userId = req.user.id;
     const { minutes } = req.body;
 
     if (!minutes || minutes <= 0) {
-      return res.status(400).json({ message: "Invalid minutes amount" });
+      throw new Error("Invalid minutes");
     }
 
-    const settings = await SystemSettings.findOne();
+    /* ================= SETTINGS ================= */
+    const settings = await SystemSettings.findOne().session(session);
 
     if (settings?.beta?.active && !settings.beta.showConversion) {
-      return res.status(403).json({
-        code: "BETA_CONVERSION_DISABLED",
-        message: "Conversion is disabled during beta",
-      });
+      throw new Error("Conversion disabled in beta");
     }
 
-    const wallet =
-      (await Wallet.findOne({ userId: uid })) ||
-      (await Wallet.create({ userId: uid }));
+    /* ================= WALLET ================= */
+    const wallet = await Wallet.findOneAndUpdate(
+      { userId },
+      { $setOnInsert: { userId } },
+      { new: true, upsert: true, session }
+    );
 
     /* DAILY RESET */
-
     if (
       !wallet.lastConversionReset ||
-      new Date().toDateString() !==
-        wallet.lastConversionReset.toDateString()
+      new Date().toDateString() !== wallet.lastConversionReset.toDateString()
     ) {
       wallet.convertedTodayMinutes = 0;
       wallet.lastConversionReset = new Date();
     }
 
     if (wallet.totalMinutes < minutes) {
-      return res.status(400).json({ message: "Insufficient minutes" });
+      throw new Error("Insufficient minutes");
     }
 
-    /* TRUST CHECK */
-
-    const trust =
-      (await UserTrust.findOne({ userId: uid })) ||
-      (await UserTrust.create({ userId: uid }));
+    /* ================= TRUST ================= */
+    const trust = await UserTrust.findOneAndUpdate(
+      { userId },
+      { $setOnInsert: { userId, score: 100 } },
+      { new: true, upsert: true, session }
+    );
 
     if (trust.score < 40) {
-      return res.status(403).json({
-        code: "TRUST_BLOCKED",
-        message: "Conversion blocked due to trust status",
-      });
+      throw new Error("Trust blocked");
     }
 
+    /* ================= LIMIT ================= */
     let maxMinutes = 300;
 
     if (trust.score < 80) maxMinutes = 150;
@@ -71,70 +74,62 @@ router.post("/", auth, async (req: any, res) => {
     }
 
     if (wallet.convertedTodayMinutes + minutes > maxMinutes) {
-      return res.status(403).json({
-        code: "DAILY_LIMIT_REACHED",
-        message: `Daily conversion limit reached (${maxMinutes} mins)`,
-      });
+      throw new Error("Daily limit reached");
     }
 
-    /* CONVERSION POOL */
-
-    let pool = await ConversionPool.findOne({ source: "AIRTIME" });
-
-    if (!pool) {
-      pool = await ConversionPool.create({
-        source: "AIRTIME",
-        balanceATC: 1000000,
-        rate: 0.0025,
-        dailyLimitATC: 50000,
-        spentTodayATC: 0,
-        paused: false,
-      });
-    }
+    /* ================= POOL ================= */
+    const pool = await ConversionPool.findOneAndUpdate(
+      { source: "AIRTIME" },
+      {
+        $setOnInsert: {
+          source: "AIRTIME",
+          balanceATC: 1000000,
+          rate: 0.0025,
+          dailyLimitATC: 50000,
+          spentTodayATC: 0,
+          paused: false,
+        },
+      },
+      { new: true, upsert: true, session }
+    );
 
     await resetIfNewDay(pool);
 
     if (pool.paused) {
-      return res.status(403).json({
-        code: "POOL_PAUSED",
-        message: "Conversion temporarily paused",
-      });
+      throw new Error("Pool paused");
     }
 
-    /* EMISSION ENGINE */
-
+    /* ================= EMISSION ================= */
     await runEmissionHalvingIfNeeded();
 
     const rate = await getDynamicRate();
 
-    const atcAmount = Number((minutes * rate).toFixed(6));
+    let atcAmount = Number((minutes * rate).toFixed(6));
 
-    /* TREASURY CHECK */
+    if (atcAmount <= 0) {
+      throw new Error("Too small");
+    }
 
+    /* ================= TREASURY PROTECTION ================= */
     if (pool.spentTodayATC + atcAmount > pool.dailyLimitATC) {
-      return res.status(403).json({
-        code: "POOL_DAILY_LIMIT",
-        message: "Daily conversion pool limit reached",
-      });
+      throw new Error("Daily pool exhausted");
     }
 
     if (pool.balanceATC < atcAmount) {
-      return res.status(403).json({
-        code: "POOL_EMPTY",
-        message: "Conversion pool depleted",
-      });
+      // 🔥 AUTO SCALE instead of reject
+      const scaledATC = pool.balanceATC * 0.9;
+
+      atcAmount = scaledATC;
     }
 
-    /* UPDATE WALLET */
+    /* ================= APPLY ================= */
 
     wallet.totalMinutes -= minutes;
     wallet.balanceATC += atcAmount;
     wallet.convertedTodayMinutes += minutes;
     wallet.lastConversionAt = new Date();
 
-    await wallet.save();
-
-    /* UPDATE POOL */
+    await wallet.save({ session });
 
     pool.balanceATC -= atcAmount;
     pool.spentTodayATC += atcAmount;
@@ -143,40 +138,48 @@ router.post("/", auth, async (req: any, res) => {
       pool.paused = true;
     }
 
-    await pool.save();
+    await pool.save({ session });
 
-    /* LOG TRANSACTION */
+    /* ================= TRANSACTION ================= */
 
-    await Transaction.create({
-      userId: uid,
-      type: "CONVERT",
-      amount: atcAmount,
-      source: "MINUTES",
-      meta: {
-        minutes,
-        rate,
-        beta: settings?.beta?.active || false,
-      },
-    });
+    await Transaction.create(
+      [
+        {
+          userId,
+          type: "CONVERT",
+          amount: atcAmount,
+          source: "MINUTES",
+          meta: {
+            minutes,
+            rate,
+            trustScore: trust.score,
+          },
+        },
+      ],
+      { session }
+    );
 
-    res.json({
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.json({
       success: true,
       minutesConverted: minutes,
       atcReceived: atcAmount,
       rate,
-      remainingDailyMinutes:
-        maxMinutes - wallet.convertedTodayMinutes,
-      betaActive: settings?.beta?.active || false,
+      remainingDailyMinutes: maxMinutes - wallet.convertedTodayMinutes,
     });
 
-  } catch (err) {
+  } catch (err: any) {
+    await session.abortTransaction();
+    session.endSession();
 
-    console.error("CONVERT ERROR:", err);
+    console.error("❌ CONVERT ERROR:", err.message);
 
-    res.status(500).json({
-      message: "Conversion failed",
+    return res.status(400).json({
+      success: false,
+      message: err.message,
     });
-
   }
 });
 

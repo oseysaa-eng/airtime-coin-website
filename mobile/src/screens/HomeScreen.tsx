@@ -64,6 +64,7 @@ export default function HomeScreen() {
   const [rewardPopup, setRewardPopup] = useState<number | null>(null);
   const [isEarning, setIsEarning] = useState(false);
   
+  
 
 
   /* ================= FETCH ================= */
@@ -226,7 +227,7 @@ unsubWallet = await onSocketEvent("WALLET_UPDATE", async (data) => {
 
   const chartData = {
     labels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-    datasets: [{ data: weeklyData.length === 7 ? weeklyData : defaultChart }],
+    datasets: [{ data: weeklyData.map(n => Math.floor(n)) }]
   };
 
 
