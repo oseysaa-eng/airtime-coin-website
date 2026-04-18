@@ -22,6 +22,9 @@ const AdminSchema = new mongoose.Schema(
       default: true,
     },
 
+    failedAttempts: { type: Number, default: 0 },
+    lockUntil: { type: Date },
+
     /* 🔥 TOKEN CONTROL (important even for 1 admin) */
     tokenVersion: {
       type: Number,
@@ -35,6 +38,7 @@ const AdminSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
 
 /* 🔐 HASH PASSWORD */
 AdminSchema.pre("save", async function (next) {

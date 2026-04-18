@@ -1,22 +1,18 @@
 import rateLimit from "express-rate-limit";
 
 export const adminLoginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 mins
-  max: 5, // 🔥 only 5 attempts
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+
   standardHeaders: true,
   legacyHeaders: false,
 
-  message: {
-    success: false,
-    message: "Too many login attempts. Try again in 15 minutes.",
-  },
-
-  handler: (req, res) => {
+  handler: (req, res, next) => {
     console.warn("🚨 Admin login rate limit hit:", req.ip);
 
-    res.status(429).json({
+    return res.status(429).json({
       success: false,
-      message: "Too many login attempts",
+      message: "Too many login attempts. Try again in 15 minutes.",
     });
   },
 });
