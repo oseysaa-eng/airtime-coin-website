@@ -40,7 +40,7 @@ router.post("/", auth, async (req: any, res) => {
       { new: true, upsert: true, session }
     );
 
-    /* DAILY RESET */
+    // DAILY RESET
     if (
       !wallet.lastConversionReset ||
       new Date().toDateString() !== wallet.lastConversionReset.toDateString()
@@ -101,46 +101,40 @@ router.post("/", auth, async (req: any, res) => {
     }
 
     /* ================= EMISSION ================= */
+    await runEmissionHalvingIfNeeded();
 
     const rate = await getDynamicRate();
 
     const PROFIT_PERCENT = 0.1;
 
-    // total value
-    const grossATC = minutes * rate;
-
-    // user gets less
-    let userATC = Number((grossATC * (1 - PROFIT_PERCENT)).toFixed(6));
-
-    // profit
-    const profitATC = Number((grossATC * PROFIT_PERCENT).toFixed(6));
+    let grossATC = minutes * rate;
 
     if (grossATC <= 0) {
       throw new Error("Too small");
     }
 
-    /* ================= TREASURY ================= */
+    /* ================= TREASURY PROTECTION ================= */
 
     if (pool.spentTodayATC + grossATC > pool.dailyLimitATC) {
       throw new Error("Daily pool exhausted");
     }
 
+    // 🔥 SAFE SCALING (FIXED)
     if (pool.balanceATC < grossATC) {
-      // 🔥 scale safely
-      const scaledATC = pool.balanceATC * 0.9;
+      console.warn("⚠️ Pool low → scaling conversion");
 
-      userATC = Number((scaledATC * (1 - PROFIT_PERCENT)).toFixed(6));
+      grossATC = pool.balanceATC * 0.9;
     }
+
+    const userATC = Number((grossATC * (1 - PROFIT_PERCENT)).toFixed(6));
+    const profitATC = Number((grossATC * PROFIT_PERCENT).toFixed(6));
 
     /* ================= APPLY ================= */
 
     wallet.totalMinutes -= minutes;
-
     wallet.balanceATC += userATC;
     wallet.convertedTodayMinutes += minutes;
     wallet.lastConversionAt = new Date();
-
-
 
     await wallet.save({ session });
 
@@ -154,8 +148,6 @@ router.post("/", auth, async (req: any, res) => {
     await pool.save({ session });
 
     /* ================= TRANSACTION ================= */
-
-    
 
     await Transaction.create(
       [
@@ -173,18 +165,20 @@ router.post("/", auth, async (req: any, res) => {
       ],
       { session }
     );
-    
-          const systemWallet = await SystemWallet.findOneAndUpdate(
-    {},
-    {
-      $inc: {
-        totalProfitATC: profitATC,
-        totalConversions: 1,
+
+    /* ================= SYSTEM PROFIT ================= */
+
+    await SystemWallet.findOneAndUpdate(
+      {},
+      {
+        $inc: {
+          totalProfitATC: profitATC,
+          totalConversions: 1,
+        },
       },
-    },
-    { upsert: true, new: true, session }
-  );
-  
+      { upsert: true, new: true, session }
+    );
+
     await session.commitTransaction();
     session.endSession();
 

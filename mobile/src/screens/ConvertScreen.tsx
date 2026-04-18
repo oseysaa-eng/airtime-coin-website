@@ -10,51 +10,77 @@ import {
 import API from "../api/api";
 import { emitDashboardUpdate } from "../utils/events";
 
-
 export default function ConvertScreen() {
   const [totalMinutes, setTotalMinutes] = useState(0);
   const [minutes, setMinutes] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [rate, setRate] = useState(0.0025);
 
-
+  const [rate, setRate] = useState(0);
+  const [minConvert, setMinConvert] = useState(10);
 
   useEffect(() => {
     loadWallet();
+    loadConfig();
   }, []);
 
+  /* ================= LOAD WALLET ================= */
   const loadWallet = async () => {
     try {
       const res = await API.get("/api/summary");
-      setTotalMinutes(res.data.totalMinutes || 0);
+
+      const mins = res.data.totalMinutes || 0;
+
+      setTotalMinutes(mins);
+
+      // 🔥 clamp slider if needed
+      if (minutes > mins) {
+        setMinutes(mins);
+      }
+
     } catch {
       Alert.alert("Error", "Failed to load wallet");
     }
   };
 
+  /* ================= LOAD RATE ================= */
+  const loadConfig = async () => {
+    try {
+      const res = await API.get("/api/convert/config");
+
+      setRate(res.data.rate);
+      setMinConvert(res.data.minConvertMinutes || 10);
+
+    } catch {
+      console.log("⚠️ Using fallback rate");
+      setRate(0.0025);
+    }
+  };
+
+  /* ================= CONVERT ================= */
   const convert = async () => {
-    if (minutes <= 0) {
-      Alert.alert("Invalid", "Select minutes to convert");
+    if (minutes < minConvert) {
+      Alert.alert(
+        "Minimum Required",
+        `Minimum ${minConvert} minutes required`
+      );
       return;
     }
 
     try {
       setLoading(true);
+
       const res = await API.post("/api/convert", { minutes });
 
       Alert.alert(
-  "Success 🎉",
-  `${res.data.atcReceived.toFixed(4)} ATC credited`
-);
-
-setMinutes(0);
-
-emitDashboardUpdate(); // 🔥 notify HomeScreen
-
-loadWallet();
+        "Success 🎉",
+        `${res.data.atcReceived.toFixed(4)} ATC credited`
+      );
 
       setMinutes(0);
+
+      emitDashboardUpdate();
       loadWallet();
+
     } catch (err: any) {
       Alert.alert(
         "Conversion Failed",
@@ -65,17 +91,27 @@ loadWallet();
     }
   };
 
-  const estimatedATC = (minutes * rate).toFixed(4);
+  /* ================= ESTIMATION ================= */
+  const estimatedATC = (() => {
+    if (!rate) return "0.0000";
+
+    const PROFIT_CUT = 0.9; // 🔥 match backend (10% cut)
+    return (minutes * rate * PROFIT_CUT).toFixed(4);
+  })();
+
+  /* ================= UI ================= */
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Convert Airtime</Text>
 
+      {/* WALLET */}
       <View style={styles.card}>
         <Text style={styles.label}>Available Minutes</Text>
         <Text style={styles.value}>{totalMinutes} mins</Text>
       </View>
 
+      {/* SLIDER */}
       <View style={styles.card}>
         <Text style={styles.label}>Select Minutes</Text>
 
@@ -83,7 +119,7 @@ loadWallet();
 
         <Slider
           value={minutes}
-          onValueChange={(v) => setMinutes(v[0])}
+          onValueChange={(v) => setMinutes(Math.floor(v[0]))}
           minimumValue={0}
           maximumValue={totalMinutes}
           step={10}
@@ -98,12 +134,14 @@ loadWallet();
         </Text>
       </View>
 
+      {/* RATE */}
       <View style={styles.card}>
         <Text style={styles.rate}>
-          Rate: 1 min = {rate} ATC
+          Rate: dynamic
         </Text>
       </View>
 
+      {/* BUTTON */}
       <View style={styles.buttonWrap}>
         {loading ? (
           <ActivityIndicator />
