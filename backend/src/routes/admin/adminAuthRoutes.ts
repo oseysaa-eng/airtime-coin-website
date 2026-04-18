@@ -4,7 +4,6 @@ import jwt from "jsonwebtoken";
 import Admin from "../../models/Admin";
 import { adminLoginLimiter } from "../../middleware/adminRateLimit";
 
-
 const router = express.Router();
 
 router.post("/", adminLoginLimiter, async (req, res) => {
@@ -25,45 +24,47 @@ router.post("/", adminLoginLimiter, async (req, res) => {
       });
     }
 
-
+    /* ================= FIND ADMIN ================= */
     const admin = await Admin.findOne({ email });
 
-// 🔒 LOCK CHECK FIRST
-if (admin?.lockUntil && admin.lockUntil > new Date()) {
-  return res.status(403).json({
-    message: "Account temporarily locked",
-  });
-}
-
-const fakeHash =
-  "$2a$10$7a8f8d9f7a8f8d9f7a8f8uQy5Y1Qe7Y5Y1Qe7Y5Y1Qe7Y5Y1Qe7Y5";
-
-const hash = admin?.password || fakeHash;
-
-const match = await bcrypt.compare(password, hash);
-
-if (!admin || !match) {
-  if (admin) {
-    admin.failedAttempts = (admin.failedAttempts || 0) + 1;
-
-    if (admin.failedAttempts >= 5) {
-      admin.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
-      admin.failedAttempts = 0;
+    if (!admin) {
+      return res.status(401).json({
+        message: "Invalid credentials",
+      });
     }
 
+    /* ================= LOCK CHECK (BEFORE PASSWORD) ================= */
+    if (admin.lockUntil && admin.lockUntil > new Date()) {
+      return res.status(403).json({
+        message: "Account temporarily locked. Try later.",
+      });
+    }
+
+    /* ================= PASSWORD ================= */
+    const match = await bcrypt.compare(password, admin.password);
+
+    if (!match) {
+      // 🔥 increment failed attempts
+      admin.failedAttempts = (admin.failedAttempts || 0) + 1;
+
+      if (admin.failedAttempts >= 5) {
+        admin.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
+        admin.failedAttempts = 0;
+      }
+
+      await admin.save();
+
+      return res.status(401).json({
+        message: "Invalid credentials",
+      });
+    }
+
+    /* ================= SUCCESS RESET ================= */
+    admin.failedAttempts = 0;
+    admin.lockUntil = undefined;
     await admin.save();
-  }
 
-  return res.status(401).json({
-    message: "Invalid credentials",
-  });
-}
-
-// ✅ RESET AFTER SUCCESS
-admin.failedAttempts = 0;
-admin.lockUntil = undefined;
-await admin.save();
-
+    /* ================= TOKEN ================= */
     const token = jwt.sign(
       {
         id: admin._id,
