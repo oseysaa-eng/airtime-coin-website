@@ -1,7 +1,10 @@
 "use client";
 
 import adminApi from "@/lib/adminApi";
-import { connectAdminSocket, disconnectAdminSocket } from "@/lib/adminSocket";
+import {
+  connectAdminSocket,
+  disconnectAdminSocket,
+} from "@/lib/adminSocket";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -17,20 +20,22 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
 
   const login = async () => {
-    if (loading) return; // 🔒 prevent double click
+    if (loading) return;
 
-    /* ================= BASIC VALIDATION ================= */
+    /* ================= VALIDATION ================= */
     if (!email || !password) {
       setError("Email and password required");
       return;
     }
+
+    const normalizedEmail = email.toLowerCase().trim();
 
     try {
       setLoading(true);
       setError("");
 
       const res = await adminApi.post("/auth", {
-        email,
+        email: normalizedEmail,
         password,
       });
 
@@ -46,11 +51,12 @@ export default function AdminLoginPage() {
       /* ================= SAVE TOKEN ================= */
       localStorage.setItem(TOKEN_KEY, token);
 
-      /* ================= CONNECT SOCKET ================= */
-      const socket = connectAdminSocket();
+      /* ================= CONNECT SOCKET (SAFE) ================= */
+      const socket = connectAdminSocket(token); // 🔥 pass token directly
 
       if (!socket) {
-        console.warn("⚠️ Socket not connected yet");
+        console.warn("⚠️ Socket delayed, retrying...");
+        setTimeout(() => connectAdminSocket(token), 1000);
       }
 
       /* ================= NAVIGATE ================= */
@@ -65,17 +71,18 @@ export default function AdminLoginPage() {
         "Login failed"
       );
 
-      /* 🔥 ensure no bad token stays */
+      /* 🔒 CLEANUP */
       localStorage.removeItem(TOKEN_KEY);
+      disconnectAdminSocket();
 
     } finally {
       setLoading(false);
     }
   };
 
-  /* ================= ENTER KEY SUPPORT ================= */
+  /* ================= ENTER KEY ================= */
   const handleKeyPress = (e: any) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !loading) {
       login();
     }
   };
@@ -97,7 +104,7 @@ export default function AdminLoginPage() {
           className="border p-2 w-full mb-2 rounded"
           placeholder="Email"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
           onKeyDown={handleKeyPress}
         />
 
@@ -106,7 +113,7 @@ export default function AdminLoginPage() {
           placeholder="Password"
           type="password"
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
           onKeyDown={handleKeyPress}
         />
 
