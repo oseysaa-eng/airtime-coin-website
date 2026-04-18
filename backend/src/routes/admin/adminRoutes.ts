@@ -1,5 +1,6 @@
 import express from "express";
 import { adminLimiter } from "../../middleware/adminRateLimiter";
+import adminAuth from "../../middleware/adminAuth";
 
 import adminAnalyticsRoutes from "./adminAnalyticsRoutes";
 import adminAuditRoutes from "./adminAuditRoutes";
@@ -11,35 +12,23 @@ import adminUtilityRoutes from "./adminUtilityRoutes";
 import adminDeviceRoutes from "./adminDeviceRoutes";
 import adminFraudRadarRoutes from "./adminFraudRadarRoutes";
 
-
-
 const router = express.Router();
 
-// 🔒 Rate limit ALL admin endpoints
-router.use(adminLimiter);
+/* ================= PUBLIC ================= */
+router.use("/auth", adminLimiter, adminAuthRoutes);
 
-// 🔐 Auth
-router.use("/auth", adminAuthRoutes);
+/* ================= PROTECTED ================= */
+router.use(adminAuth);        // 🔒 ALL below require admin
+router.use(adminLimiter);     // 🚫 rate limit after auth
 
-// 📊 Analytics
+/* ================= ROUTES ================= */
 router.use("/analytics", adminAnalyticsRoutes);
-
-// 👥 Users
 router.use("/users", adminUsersRoutes);
-
-// ⚙️ System
 router.use("/system", adminSystemRoutes);
-
-// 🚨 Fraud
 router.use("/fraud", adminFraudRoutes);
-
-// 🧾 Audit
 router.use("/audit", adminAuditRoutes);
-
 router.use("/utility", adminUtilityRoutes);
-
 router.use("/devices", adminDeviceRoutes);
-
 router.use("/fraud-radar", adminFraudRadarRoutes);
 
 export default router;

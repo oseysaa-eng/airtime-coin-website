@@ -1,11 +1,10 @@
 "use client";
 
 import adminApi from "@/lib/adminApi";
-import { connectAdminSocket } from "@/lib/adminSocket";
+import { connectAdminSocket, disconnectAdminSocket } from "@/lib/adminSocket";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-/* 🔥 SINGLE SOURCE OF TRUTH */
 const TOKEN_KEY = "adminToken";
 
 export default function AdminLoginPage() {
@@ -18,6 +17,14 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
 
   const login = async () => {
+    if (loading) return; // 🔒 prevent double click
+
+    /* ================= BASIC VALIDATION ================= */
+    if (!email || !password) {
+      setError("Email and password required");
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
@@ -27,22 +34,49 @@ export default function AdminLoginPage() {
         password,
       });
 
+      const token = res.data.token;
+
+      if (!token) {
+        throw new Error("No token received");
+      }
+
+      /* ================= RESET OLD SOCKET ================= */
+      disconnectAdminSocket();
+
       /* ================= SAVE TOKEN ================= */
-      localStorage.setItem(TOKEN_KEY, res.data.token);
+      localStorage.setItem(TOKEN_KEY, token);
 
       /* ================= CONNECT SOCKET ================= */
-      connectAdminSocket(); // 🔥 important
+      const socket = connectAdminSocket();
+
+      if (!socket) {
+        console.warn("⚠️ Socket not connected yet");
+      }
 
       /* ================= NAVIGATE ================= */
       router.replace("/admin/dashboard");
 
     } catch (err: any) {
+      console.log("❌ Login error:", err?.response?.data || err.message);
+
       setError(
         err?.response?.data?.message ||
+        err.message ||
         "Login failed"
       );
+
+      /* 🔥 ensure no bad token stays */
+      localStorage.removeItem(TOKEN_KEY);
+
     } finally {
       setLoading(false);
+    }
+  };
+
+  /* ================= ENTER KEY SUPPORT ================= */
+  const handleKeyPress = (e: any) => {
+    if (e.key === "Enter") {
+      login();
     }
   };
 
@@ -54,7 +88,7 @@ export default function AdminLoginPage() {
         </h1>
 
         {error && (
-          <p className="text-red-500 text-sm mb-3">
+          <p className="text-red-500 text-sm mb-3 text-center">
             {error}
           </p>
         )}
@@ -64,6 +98,7 @@ export default function AdminLoginPage() {
           placeholder="Email"
           value={email}
           onChange={e => setEmail(e.target.value)}
+          onKeyDown={handleKeyPress}
         />
 
         <input
@@ -72,6 +107,7 @@ export default function AdminLoginPage() {
           type="password"
           value={password}
           onChange={e => setPassword(e.target.value)}
+          onKeyDown={handleKeyPress}
         />
 
         <button

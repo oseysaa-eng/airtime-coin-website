@@ -1,47 +1,72 @@
-// routes/transactionRoutes.ts
-import express, { Request, Response } from 'express';
-import isAuthenticated from '../middleware/authMiddleware';
-import Transaction from '../models/Transaction';
+import express, { Request, Response } from "express";
+import isAuthenticated from "../middleware/authMiddleware";
+import Transaction from "../models/Transaction";
 
 const router = express.Router();
 
-// GET /transactions - Get all transactions for the authenticated user
-router.get('/', isAuthenticated, async (req: Request, res: Response) => {
-  const userId = (req as any).user._id;
+/* ================= GET USER TRANSACTIONS ================= */
+router.get("/", isAuthenticated, async (req: any, res: Response) => {
+  const userId = req.user.id;
+
+  const page = Number(req.query.page) || 1;
+  const limit = 20;
+  const skip = (page - 1) * limit;
 
   try {
-    const transactions = await Transaction.find({ userId }).sort({ createdAt: -1 });
-    res.status(200).json(transactions);
+    const transactions = await Transaction.find({ userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    res.status(200).json({
+      page,
+      count: transactions.length,
+      transactions,
+    });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Failed to fetch transactions' });
+    res.status(500).json({ message: "Failed to fetch transactions" });
   }
 });
 
-// POST /transactions - Record a new transaction
-router.post('/', isAuthenticated, async (req: Request, res: Response) => {
-  const { type, amount, description } = req.body;
-  const userId = (req as any).user._id;
+/* ================= CREATE TRANSACTION (LIMITED USE) ================= */
+router.post("/", isAuthenticated, async (req: any, res: Response) => {
+  const userId = req.user.id;
+  const { type, amount, source } = req.body;
 
-  if (!type || !amount) {
-    return res.status(400).json({ message: 'Transaction type and amount are required' });
+  /* 🔒 STRICT VALIDATION */
+  if (!type || typeof amount !== "number") {
+    return res.status(400).json({
+      message: "Invalid transaction data",
+    });
+  }
+
+  /* 🔒 BLOCK ABUSE */
+  if (amount <= 0 || amount > 1000) {
+    return res.status(400).json({
+      message: "Invalid amount range",
+    });
   }
 
   try {
-    const transaction = new Transaction({
-      user: userId,
+    const tx = await Transaction.create({
+      userId,
       type,
       amount,
-      description,
-      createdAt: new Date(),
+      source: source || "MANUAL",
+      meta: {},
     });
 
-    await transaction.save();
+    res.status(201).json({
+      success: true,
+      transaction: tx,
+    });
 
-    res.status(201).json({ message: 'Transaction recorded', transaction });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Transaction failed' });
+    res.status(500).json({ message: "Transaction failed" });
   }
 });
 

@@ -2,17 +2,17 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Admin from "../../models/Admin";
+import { adminLoginLimiter } from "../../middleware/adminRateLimit";
+
 
 const router = express.Router();
 
-/**
- * POST /api/admin/auth/login
- */
-router.post("/", async (req, res) => {
+router.post("/", adminLoginLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    let { email, password } = req.body;
 
-    /* ================= VALIDATION ================= */
+    email = email?.toLowerCase().trim();
+
     if (!email || !password) {
       return res.status(400).json({
         message: "Email and password required",
@@ -20,51 +20,55 @@ router.post("/", async (req, res) => {
     }
 
     if (!process.env.ADMIN_JWT_SECRET) {
-      console.error("❌ ADMIN_JWT_SECRET missing");
       return res.status(500).json({
         message: "Server misconfigured",
       });
     }
 
-    /* ================= ADMIN ================= */
     const admin = await Admin.findOne({ email });
 
-    if (!admin) {
+    const fakeHash =
+      "$2a$10$7a8f8d9f7a8f8d9f7a8f8uQy5Y1Qe7Y5Y1Qe7Y5Y1Qe7Y5Y1Qe7Y5";
+
+    const hash = admin?.password || fakeHash;
+
+    const match = await bcrypt.compare(password, hash);
+
+    if (!admin || !match) {
       return res.status(401).json({
         message: "Invalid credentials",
       });
     }
 
-    /* 🔒 OPTIONAL: status check */
-    if (admin.isActive === false) {
+    // 🔒 Lock check
+    if (admin.lockUntil && admin.lockUntil > new Date()) {
       return res.status(403).json({
-        message: "Account disabled",
+        message: "Account temporarily locked",
       });
     }
 
-    /* ================= PASSWORD ================= */
-    const match = await bcrypt.compare(password, admin.password);
+    // 🔒 Reset attempts
+    admin.failedAttempts = 0;
+    admin.lockUntil = undefined;
+    await admin.save();
 
-    if (!match) {
-      return res.status(401).json({
-        message: "Invalid credentials",
-      });
-    }
-
-    /* ================= TOKEN ================= */
     const token = jwt.sign(
       {
         id: admin._id,
-        email: admin.email,
-        role: "admin", // 🔥 important
+        role: "admin",
+        tokenVersion: admin.tokenVersion || 0,
       },
       process.env.ADMIN_JWT_SECRET,
-      {
-        expiresIn: "7d",
-      }
+      { expiresIn: "7d" }
     );
 
-    /* ================= RESPONSE ================= */
+    console.log("🔐 Admin login:", {
+      email: admin.email,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+      time: new Date(),
+    });
+
     res.json({
       success: true,
       token,
@@ -73,9 +77,6 @@ router.post("/", async (req, res) => {
         email: admin.email,
       },
     });
-
-    /* ================= LOG ================= */
-    console.log("🔐 Admin login:", admin.email);
 
   } catch (err: any) {
     console.error("❌ ADMIN LOGIN ERROR:", err.message);
