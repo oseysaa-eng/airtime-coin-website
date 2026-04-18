@@ -7,12 +7,8 @@ export const adminLoginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 
-  handler: (req, res, next) => {
-    console.warn("🚨 Admin login rate limit hit:", req.ip);
-
-    return res.status(429).json({
-      success: false,
-      message: "Too many login attempts. Try again in 15 minutes.",
-    });
+  message: {
+    success: false,
+    message: "Too many login attempts. Try again in 15 minutes.",
   },
 });
