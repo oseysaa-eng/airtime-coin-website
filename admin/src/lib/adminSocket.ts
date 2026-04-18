@@ -1,9 +1,10 @@
 import { io, Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
+let currentToken: string | null = null;
 
 /* ============================================
-   CONNECT ADMIN SOCKET (SAFE + TOKEN AWARE)
+   CONNECT ADMIN SOCKET (FINAL SAFE VERSION)
 ============================================ */
 export const connectAdminSocket = (
   tokenOverride?: string
@@ -19,26 +20,24 @@ export const connectAdminSocket = (
     return null;
   }
 
-  /* 🔥 FORCE RECONNECT IF TOKEN CHANGED */
-  if (socket) {
-    const currentToken = socket.auth?.token;
+  /* 🔥 RECONNECT IF TOKEN CHANGED */
+  if (socket && currentToken !== token) {
+    console.log("🔄 Token changed — resetting socket");
 
-    if (currentToken !== token) {
-      console.log("🔄 Token changed — reconnecting socket");
-
-      socket.disconnect();
-      socket = null;
-    }
+    socket.disconnect();
+    socket = null;
   }
 
-  /* 🔥 CREATE NEW SOCKET */
+  /* 🔥 CREATE SOCKET ONLY ONCE */
   if (!socket) {
+    currentToken = token;
+
     socket = io(process.env.NEXT_PUBLIC_ADMIN_API_URL!, {
       transports: ["websocket"],
       auth: { token },
 
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity, // 🔥 keep trying
       reconnectionDelay: 2000,
     });
 
@@ -55,12 +54,19 @@ export const connectAdminSocket = (
     socket.on("connect_error", (err) => {
       console.log("❌ Socket error:", err.message);
 
-      /* 🔥 AUTO LOGOUT ON AUTH FAILURE */
-      if (err.message === "Unauthorized") {
+      /* 🔥 AUTH FAILURE HANDLING */
+      if (
+        err.message === "Unauthorized" ||
+        err.message === "invalid token"
+      ) {
         console.warn("🚨 Admin session expired");
 
         localStorage.removeItem("adminToken");
-        window.location.href = "/admin/login";
+
+        // safer than window.location
+        if (typeof window !== "undefined") {
+          window.location.replace("/admin/login");
+        }
       }
     });
   }
@@ -76,7 +82,7 @@ export const getAdminSocket = (): Socket | null => {
 };
 
 /* ============================================
-   SAFE LISTENER HELPER (NO DUPLICATES)
+   SAFE LISTENER (NO DUPLICATES GUARANTEED)
 ============================================ */
 export const onAdminSocket = (
   event: string,
@@ -89,8 +95,9 @@ export const onAdminSocket = (
     return () => {};
   }
 
-  /* 🔥 REMOVE OLD FIRST (prevents duplicate listeners) */
-  s.off(event, callback);
+  /* 🔥 REMOVE ALL LISTENERS FOR THIS EVENT FIRST */
+  s.removeAllListeners(event);
+
   s.on(event, callback);
 
   return () => {
@@ -104,7 +111,11 @@ export const onAdminSocket = (
 export const disconnectAdminSocket = () => {
   if (socket) {
     console.log("🔌 Disconnecting admin socket");
+
+    socket.removeAllListeners(); // 🔥 important cleanup
     socket.disconnect();
+
     socket = null;
+    currentToken = null;
   }
 };
