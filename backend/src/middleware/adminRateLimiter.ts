@@ -7,12 +7,10 @@ export const adminLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 
-  keyGenerator: (req: any) => {
-    return req.admin?._id?.toString() || req.ip;
-  },
+  /* 🔥 REMOVE keyGenerator completely */
 
-    handler: (req, res, next) => {
-  console.warn("🚨 Admin login rate limit hit:", req.ip);
+  handler: (req, res) => {
+    console.warn("🚨 Admin rate limit hit:", req.ip);
 
     res.status(429).json({
       success: false,
