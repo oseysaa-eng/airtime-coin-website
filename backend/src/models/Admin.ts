@@ -14,13 +14,12 @@ const AdminSchema = new mongoose.Schema(
     password: {
       type: String,
       required: true,
-      select: false, // 🔥 hide password
     },
 
     role: {
       type: String,
-      enum: ["super_admin"],
-      default: "super_admin",
+      enum: ["admin", "superadmin"], // ✅ FIXED
+      default: "superadmin", // 🔥 since you said only super admin for now
     },
 
     isActive: {
@@ -36,32 +35,18 @@ const AdminSchema = new mongoose.Schema(
       default: 0,
     },
 
-    lastLoginAt: Date,
-    lastLoginIP: String,
-    lastUserAgent: String,
+    lastLoginAt: {
+      type: Date,
+    },
   },
   { timestamps: true }
 );
 
-/* 🔐 HASH PASSWORD */
 AdminSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
+
   this.password = await bcrypt.hash(this.password, 10);
   next();
 });
-
-/* 🔒 LOCK CHECK METHOD */
-AdminSchema.methods.isLocked = function () {
-  if (!this.lockUntil) return false;
-
-  if (this.lockUntil < new Date()) {
-    this.lockUntil = undefined;
-    this.failedAttempts = 0;
-    return false;
-  }
-
-  return true;
-};
-
 
 export default mongoose.model("Admin", AdminSchema);
