@@ -11,6 +11,8 @@ import SystemWallet from "../models/SystemWallet";
 
 import { resetIfNewDay } from "../utils/resetDailyCounter";
 import { getDynamicRate, runEmissionHalvingIfNeeded } from "../services/emissionEngine";
+import { emitAdminEvent } from "../sockets/socket";
+import { resetProfitIfNewDay } from "../utils/resetDaily"; // 🔥 add this
 
 const router = express.Router();
 
@@ -40,7 +42,6 @@ router.post("/", auth, async (req: any, res) => {
       { new: true, upsert: true, session }
     );
 
-    // DAILY RESET
     if (
       !wallet.lastConversionReset ||
       new Date().toDateString() !== wallet.lastConversionReset.toDateString()
@@ -102,7 +103,6 @@ router.post("/", auth, async (req: any, res) => {
 
     /* ================= EMISSION ================= */
     await runEmissionHalvingIfNeeded();
-
     const rate = await getDynamicRate();
 
     const PROFIT_PERCENT = 0.1;
@@ -113,24 +113,21 @@ router.post("/", auth, async (req: any, res) => {
       throw new Error("Too small");
     }
 
-    /* ================= TREASURY PROTECTION ================= */
-
+    /* ================= TREASURY ================= */
     if (pool.spentTodayATC + grossATC > pool.dailyLimitATC) {
       throw new Error("Daily pool exhausted");
     }
 
-    // 🔥 SAFE SCALING (FIXED)
     if (pool.balanceATC < grossATC) {
-      console.warn("⚠️ Pool low → scaling conversion");
-
+      console.warn("⚠️ Pool low → scaling");
       grossATC = pool.balanceATC * 0.9;
     }
 
-    const userATC = Number((grossATC * (1 - PROFIT_PERCENT)).toFixed(6));
-    const profitATC = Number((grossATC * PROFIT_PERCENT).toFixed(6));
+    /* ================= CALCULATIONS ================= */
+    const userATC = Number((grossATC * 0.9).toFixed(6));
+    const profitATC = Number((grossATC * 0.1).toFixed(6));
 
     /* ================= APPLY ================= */
-
     wallet.totalMinutes -= minutes;
     wallet.balanceATC += userATC;
     wallet.convertedTodayMinutes += minutes;
@@ -147,8 +144,24 @@ router.post("/", auth, async (req: any, res) => {
 
     await pool.save({ session });
 
-    /* ================= TRANSACTION ================= */
+    /* ================= SYSTEM WALLET ================= */
+    const systemWallet = await SystemWallet.findOneAndUpdate(
+      {},
+      {
+        $inc: {
+          totalProfitATC: profitATC,
+          dailyProfitATC: profitATC,
+          totalConversions: 1,
+          profitFromConversion: profitATC,
+        },
+      },
+      { upsert: true, new: true, session }
+    );
 
+    // 🔥 DAILY RESET FIX
+    await resetProfitIfNewDay(systemWallet);
+
+    /* ================= TRANSACTION ================= */
     await Transaction.create(
       [
         {
@@ -156,38 +169,29 @@ router.post("/", auth, async (req: any, res) => {
           type: "CONVERT",
           amount: userATC,
           source: "MINUTES",
-          meta: {
-            minutes,
-            rate,
-            trustScore: trust.score,
-          },
+          meta: { minutes, rate },
         },
       ],
       { session }
     );
 
-    /* ================= SYSTEM PROFIT ================= */
-
-    await SystemWallet.findOneAndUpdate(
-      {},
-      {
-        $inc: {
-          totalProfitATC: profitATC,
-          totalConversions: 1,
-        },
-      },
-      { upsert: true, new: true, session }
-    );
-
+    /* ================= COMMIT ================= */
     await session.commitTransaction();
     session.endSession();
+
+    /* ================= EMIT AFTER SUCCESS ================= */
+    emitAdminEvent("ADMIN_ANALYTICS_UPDATE", {
+      type: "PROFIT_UPDATE",
+      amount: profitATC,
+    });
 
     return res.json({
       success: true,
       minutesConverted: minutes,
       atcReceived: userATC,
       rate,
-      remainingDailyMinutes: maxMinutes - wallet.convertedTodayMinutes,
+      remainingDailyMinutes:
+        maxMinutes - wallet.convertedTodayMinutes,
     });
 
   } catch (err: any) {

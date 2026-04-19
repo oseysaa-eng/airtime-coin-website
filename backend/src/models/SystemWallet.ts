@@ -1,16 +1,19 @@
-import mongoose, { Schema, Document } from "mongoose";
+import mongoose from "mongoose";
 
-export interface ISystemWallet extends Document {
-  totalProfitATC: number;
-  totalConversions: number;
-}
+const SystemWalletSchema = new mongoose.Schema(
+  {
+    totalProfitATC: { type: Number, default: 0 },
 
-const schema = new Schema({
-  totalProfitATC: { type: Number, default: 0 },
-  totalConversions: { type: Number, default: 0 },
-});
+    dailyProfitATC: { type: Number, default: 0 },
+    lastReset: { type: Date },
 
-export default mongoose.model<ISystemWallet>(
-  "SystemWallet",
-  schema
+    totalConversions: { type: Number, default: 0 },
+
+    profitFromCalls: { type: Number, default: 0 },
+    profitFromAds: { type: Number, default: 0 },
+    profitFromConversion: { type: Number, default: 0 },
+  },
+  { timestamps: true }
 );
+
+export default mongoose.model("SystemWallet", SystemWalletSchema);

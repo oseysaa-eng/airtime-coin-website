@@ -22,7 +22,7 @@ const normalizeNumber = (num: string) => {
 };
 
 /* ============================================
-   🚫 REPORT SPAM
+   🚫 REPORT SPAM (SAFE + ATOMIC)
 ============================================ */
 router.post("/report", auth, async (req: any, res) => {
   try {
@@ -35,38 +35,34 @@ router.post("/report", auth, async (req: any, res) => {
 
     number = normalizeNumber(number);
 
-    let record = await SpamNumber.findOne({ number });
-
-    if (record) {
-      if (record.reportedBy?.includes(userId)) {
-        return res.json({
-          success: false,
-          message: "Already reported",
-          reports: record.reports,
-        });
-      }
-
-      // 🚫 limit abuse
-      if (record.reports > 50) {
-        return res.json({ success: false, message: "Max reports reached" });
-      }
-
-      record.reports += 1;
-      record.reportedBy.push(userId);
-      record.lastReportedAt = new Date();
-
-      await record.save();
-    } else {
-      record = await SpamNumber.create({
+    /* 🔥 ATOMIC UPDATE (prevents duplicates) */
+    const result = await SpamNumber.findOneAndUpdate(
+      {
         number,
-        reports: 1,
-        reportedBy: [userId],
+        reportedBy: { $ne: userId }, // ❗ prevent duplicate report
+        reports: { $lt: 50 },        // ❗ cap abuse
+      },
+      {
+        $inc: { reports: 1 },
+        $addToSet: { reportedBy: userId },
+        $set: { lastReportedAt: new Date() },
+      },
+      {
+        new: true,
+        upsert: true,
+      }
+    );
+
+    if (!result) {
+      return res.json({
+        success: false,
+        message: "Already reported or limit reached",
       });
     }
 
     return res.json({
       success: true,
-      reports: record.reports,
+      reports: result.reports,
     });
 
   } catch (err) {
@@ -92,7 +88,6 @@ router.post("/auto-credit", auth, async (req: any, res) => {
       return res.status(404).json({ message: "Session not found" });
     }
 
-    // 🔥 ONLY RETURN STATUS (NO CREDIT HERE)
     return res.json({
       credited: session.creditedMinutes || 0,
       status: session.status,
@@ -105,42 +100,34 @@ router.post("/auto-credit", auth, async (req: any, res) => {
 });
 
 /* ============================================
-   📊 WEEKLY CALL DATA
+   📊 WEEKLY CALL DATA (IMPROVED)
 ============================================ */
 router.get("/weekly", auth, async (req: any, res) => {
   try {
-    const uid = new mongoose.Types.ObjectId(req.user.id); // ✅ FIX
+    const uid = new mongoose.Types.ObjectId(req.user.id);
 
-    /* ================= LAST 7 DAYS ================= */
     const today = new Date();
-    today.setHours(23, 59, 59, 999);
-
     const past = new Date();
     past.setDate(today.getDate() - 6);
-    past.setHours(0, 0, 0, 0);
 
     const data = await CallSession.aggregate([
       {
         $match: {
           userId: uid,
           status: "completed",
-          createdAt: {
-            $gte: past,
-            $lte: today,
-          },
+          createdAt: { $gte: past },
         },
       },
       {
         $group: {
           _id: {
-            $dayOfWeek: "$createdAt", // 1 = Sunday
+            $isoDayOfWeek: "$createdAt", // ✅ better (Mon=1)
           },
           minutes: { $sum: "$creditedMinutes" },
         },
       },
     ]);
 
-    /* ================= FORMAT FULL WEEK ================= */
     const weekMap: any = {
       1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0,
     };
@@ -149,19 +136,17 @@ router.get("/weekly", auth, async (req: any, res) => {
       weekMap[d._id] = d.minutes;
     });
 
-    const ordered = [
-      weekMap[2], // Mon
-      weekMap[3], // Tue
-      weekMap[4],
-      weekMap[5],
-      weekMap[6],
-      weekMap[7],
-      weekMap[1], // Sun
-    ];
-
     return res.json({
       success: true,
-      weeklyMinutes: ordered,
+      weeklyMinutes: [
+        weekMap[1],
+        weekMap[2],
+        weekMap[3],
+        weekMap[4],
+        weekMap[5],
+        weekMap[6],
+        weekMap[7],
+      ],
     });
 
   } catch (err) {
@@ -171,7 +156,7 @@ router.get("/weekly", auth, async (req: any, res) => {
 });
 
 /* ============================================
-   🔍 CHECK NUMBER
+   🔍 CHECK NUMBER (OPTIMIZED)
 ============================================ */
 router.post("/check-number", async (req, res) => {
   try {
@@ -181,23 +166,23 @@ router.post("/check-number", async (req, res) => {
       return res.status(400).json({ message: "Number required" });
     }
 
-    // 🔐 validate format
     if (!number.match(/^\+?\d{9,15}$/)) {
       return res.status(400).json({ message: "Invalid number" });
     }
 
     number = normalizeNumber(number);
 
-    const spam = await SpamNumber.findOne({ number });
+    const spam = await SpamNumber.findOne({ number }).lean();
 
     if (spam) {
+      const isSpam = spam.reports >= 3;
+
       return res.json({
-        status: spam.reports >= 3 ? "spam" : "warning",
+        status: isSpam ? "spam" : "warning",
         reports: spam.reports,
-        label:
-          spam.reports >= 3
-            ? `🚫 Reported ${spam.reports} times`
-            : `⚠️ Reported ${spam.reports} times`,
+        label: isSpam
+          ? `🚫 Reported ${spam.reports} times`
+          : `⚠️ Reported ${spam.reports} times`,
       });
     }
 

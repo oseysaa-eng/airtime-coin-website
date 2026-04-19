@@ -1,5 +1,9 @@
 import CallSession from "../models/CallSession";
 import { rewardEngine } from "./rewardEngine";
+import SystemWallet from "../models/SystemWallet";
+import { resetProfitIfNewDay } from "../utils/resetDaily";
+
+const BASE_RATE = 0.0025;
 
 export async function processCallReward(sessionId: string) {
   try {
@@ -20,30 +24,56 @@ export async function processCallReward(sessionId: string) {
     session.status = "processing";
     await session.save();
 
-    /* ================= VALIDATION ================= */
     const duration = session.durationSeconds || 0;
 
     if (duration < 10) {
       session.status = "rejected";
       await session.save();
-
       return { success: false, message: "Call too short" };
     }
 
-    /* ================= CONVERT TO MINUTES ================= */
-    const minutes = Math.floor(duration / 60);
+    /* ================= THEORETICAL ================= */
+    const theoreticalMinutes = Math.floor(duration / 60);
 
-    if (minutes <= 0) {
+    /* ================= APPLY CAP (REAL PROFIT SOURCE) ================= */
+    const cappedMinutes = Math.min(theoreticalMinutes, 5); // 🔥 your cap
+
+    if (cappedMinutes <= 0) {
       session.status = "rejected";
       await session.save();
-
       return { success: false, message: "No rewardable minutes" };
+    }
+
+    /* ================= PROFIT ================= */
+    const lostMinutes = theoreticalMinutes - cappedMinutes;
+    const profitATC = Number((lostMinutes * BASE_RATE).toFixed(6));
+
+    /* ================= UPDATE SYSTEM WALLET ================= */
+    if (profitATC > 0) {
+      let systemWallet = await SystemWallet.findOne();
+
+      if (!systemWallet) {
+        systemWallet = await SystemWallet.create({});
+      }
+
+      await resetProfitIfNewDay(systemWallet);
+
+      await SystemWallet.updateOne(
+        { _id: systemWallet._id },
+        {
+          $inc: {
+            totalProfitATC: profitATC,
+            dailyProfitATC: profitATC,
+            profitFromCalls: profitATC,
+          },
+        }
+      );
     }
 
     /* ================= REWARD ================= */
     const result = await rewardEngine({
       userId: session.userId.toString(),
-      minutes,
+      minutes: cappedMinutes,
       source: "CALL_SESSION",
       meta: {
         sessionId,
@@ -69,3 +99,5 @@ export async function processCallReward(sessionId: string) {
     throw err;
   }
 }
+
+

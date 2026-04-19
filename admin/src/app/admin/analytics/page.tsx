@@ -13,6 +13,11 @@ import FraudHeatmap from "./components/FraudHeatmap";
 import FraudAlert from "./components/FraudAlert";
 
 import { connectAdminSocket } from "@/lib/adminSocket";
+"use client";
+
+import ProfitCard from "@/components/admin/ProfitCard";
+
+
 
 export default function AnalyticsPage() {
   const [overview, setOverview] = useState<any>(null);
@@ -121,6 +126,8 @@ export default function AnalyticsPage() {
     }
   };
 
+  
+
   /* ================================
      UI STATES
   ================================= */
@@ -148,6 +155,11 @@ export default function AnalyticsPage() {
           onChange={handleFilterChange}
         />
       </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+      <ProfitCard />
+      <OverviewCards data={overview} />
+    </div>
 
       {/* FRAUD ALERT */}
       <FraudAlert alert={alert} />
