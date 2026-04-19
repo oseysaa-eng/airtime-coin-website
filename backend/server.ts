@@ -79,9 +79,7 @@ import pushRoutes from "./src/routes/pushRoutes";
 const app = express();
 
 /* TRUST PROXY */
-if (process.env.TRUST_PROXY === "true") {
-  app.set("trust proxy", 1);
-}
+app.set("trust proxy", 1);
 
 /* ================= SECURITY ================= */
 
@@ -97,8 +95,9 @@ app.use(express.urlencoded({ extended: true }));
     if (!obj) return;
 
     for (const key in obj) {
-      if (key.includes("$") || key.includes(".")) {
-        delete obj[key];
+
+      if (key.startsWith("$")) {
+  delete obj[key];
       } else if (obj[key] && typeof obj[key] === "object") {
         sanitize(obj[key]);
       }
@@ -107,6 +106,7 @@ app.use(express.urlencoded({ extended: true }));
 
   sanitize(req.body);
   sanitize(req.params);
+  sanitize(req.query);
 
   next();
 });
@@ -114,16 +114,19 @@ app.use(express.urlencoded({ extended: true }));
 
 /* ================= DEBUG ================= */
 app.use((req, _res, next) => {
+  if (process.env.NODE_ENV !== "production") {
   console.log(`📡 ${req.method} ${req.url}`);
+}
   next();
 });
 
 /* ================= TIMEOUT ================= */
 app.use((req, res, next) => {
   res.setTimeout(10000, () => {
-    console.error("⏱️ Timeout:", req.originalUrl);
+  if (!res.headersSent) {
     res.status(503).json({ message: "Request timeout" });
-  });
+  }
+});
   next();
 });
 
@@ -138,13 +141,22 @@ const allowedOrigins = [
 
       app.use(
   cors({
-    origin: allowedOrigins.length ? allowedOrigins : true,
-    credentials: true,
+    origin: allowedOrigins.length
+  ? allowedOrigins
+  : ["http://localhost:3000"],
+  credentials: true,
   })
 );
 
 /* ================= RATE LIMIT ================= */
-app.use("/api", apiLimiter);
+app.use("/api/auth", apiLimiter);
+app.use("/api/convert", apiLimiter);
+app.use("/api/earn", apiLimiter);
+app.use("/api/withdraw", apiLimiter);
+app.use("/api/call", apiLimiter);
+app.use("/api/referrals", apiLimiter);
+app.use("/api/ads", apiLimiter);
+app.use("/api/surveys", apiLimiter);
 
 /* ================= STATIC ================= */
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
@@ -220,7 +232,9 @@ const server = http.createServer(app);
 /* ================= SOCKET ================= */
 const io = new IOServer(server, {
   cors: {
-    origin: allowedOrigins.length ? allowedOrigins : true,
+    origin: allowedOrigins.length
+      ? allowedOrigins
+      : ["http://localhost:3000"],
     credentials: true,
     methods: ["GET", "POST"],
   },
@@ -228,9 +242,7 @@ const io = new IOServer(server, {
 
 app.set("io", io);
 
-io.on("connection", (socket) => {
-  console.log("🔌 Raw socket connected:", socket.id);
-});
+
 
 
 setupSocket(io);
@@ -273,5 +285,10 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+process.on("SIGTERM", () => {
+  console.log("🛑 Server shutting down...");
+  server.close(() => process.exit(0));
+});
 
 startServer();

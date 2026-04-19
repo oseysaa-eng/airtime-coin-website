@@ -5,19 +5,43 @@ import { useEffect, useState } from "react";
 
 export default function AdminGuard({ children }: { children: any }) {
   const router = useRouter();
-  const [authorized, setAuthorized] = useState(false);
+
+  const [status, setStatus] = useState<"checking" | "authorized">("checking");
 
   useEffect(() => {
-    const token = localStorage.getItem("adminToken");
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("adminToken")
+        : null;
 
     if (!token) {
-      router.replace("/admin/login"); // ✅ correct path
-    } else {
-      setAuthorized(true);
+      router.replace("/admin/login");
+      return;
     }
-  }, []);
 
-  if (!authorized) return null; // 🔥 prevents flashing UI
+    // 🔥 OPTIONAL: basic expiry check (no library)
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+
+      if (payload.exp * 1000 < Date.now()) {
+        console.warn("⏰ Token expired");
+
+        localStorage.removeItem("adminToken");
+        router.replace("/admin/login");
+        return;
+      }
+    } catch (err) {
+      console.warn("❌ Invalid token");
+
+      localStorage.removeItem("adminToken");
+      router.replace("/admin/login");
+      return;
+    }
+
+    setStatus("authorized");
+  }, [router]);
+
+  if (status !== "authorized") return null;
 
   return children;
 }

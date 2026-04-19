@@ -1,13 +1,22 @@
+import { disconnectAdminSocket } from "@/lib/adminSocket";
+
 export const adminLogout = () => {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("adminToken"); // ✅ correct storage
+  if (typeof window === "undefined") return;
 
-    // 🔥 optional: clear socket
-    try {
-      const socket = (window as any).__adminSocket;
-      socket?.disconnect?.();
-    } catch {}
+  try {
+    // 🔥 remove token
+    localStorage.removeItem("adminToken");
 
-    window.location.href = "/admin/login";
+    // 🔥 properly disconnect socket
+    disconnectAdminSocket();
+
+    // 🔥 safe redirect (no history)
+    window.location.replace("/admin/login");
+
+  } catch (err) {
+    console.error("Logout error:", err);
+
+    // fallback
+    window.location.replace("/admin/login");
   }
 };
