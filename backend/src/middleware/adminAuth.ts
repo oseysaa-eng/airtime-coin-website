@@ -23,7 +23,8 @@ export default async function adminAuth(req: any, res: any, next: any) {
     );
 
     /* ================= TYPE CHECK ================= */
-    if (decoded.type !== "super_admin") {
+    // ✅ REPLACE WITH
+    if (decoded.role !== "admin") {
       return res.status(403).json({ message: "Forbidden" });
     }
 
@@ -57,3 +58,4 @@ export default async function adminAuth(req: any, res: any, next: any) {
     });
   }
 }
+
