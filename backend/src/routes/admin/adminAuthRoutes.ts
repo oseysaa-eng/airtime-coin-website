@@ -25,34 +25,33 @@ router.post("/", adminLoginLimiter, async (req, res) => {
     }
 
     /* ================= FIND ADMIN ================= */
-    const admin = await Admin.findOne({ email });
 
-    if (!admin) {
-      return res.status(401).json({
-        message: "Invalid credentials",
-      });
-    }
+        const admin = await Admin.findOne({ email });
 
-    /* ================= LOCK CHECK (BEFORE PASSWORD) ================= */
-    if (admin.lockUntil && admin.lockUntil > new Date()) {
+    if (admin?.lockUntil && admin.lockUntil > new Date()) {
       return res.status(403).json({
         message: "Account temporarily locked. Try later.",
       });
     }
 
-    /* ================= PASSWORD ================= */
-    const match = await bcrypt.compare(password, admin.password);
+    const fakeHash =
+      "$2a$10$7a8f8d9f7a8f8d9f7a8f8uQy5Y1Qe7Y5Y1Qe7Y5Y1Qe7Y5Y1Qe7Y5";
 
-    if (!match) {
-      // 🔥 increment failed attempts
-      admin.failedAttempts = (admin.failedAttempts || 0) + 1;
+    const hash = admin?.password || fakeHash;
 
-      if (admin.failedAttempts >= 5) {
-        admin.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
-        admin.failedAttempts = 0;
+    const match = await bcrypt.compare(password, hash);
+
+    if (!admin || !match) {
+      if (admin) {
+        admin.failedAttempts = (admin.failedAttempts || 0) + 1;
+
+        if (admin.failedAttempts >= 5) {
+          admin.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
+          admin.failedAttempts = 0;
+        }
+
+        await admin.save();
       }
-
-      await admin.save();
 
       return res.status(401).json({
         message: "Invalid credentials",
