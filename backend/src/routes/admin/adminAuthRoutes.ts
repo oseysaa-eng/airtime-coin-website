@@ -18,24 +18,18 @@ router.post("/", adminLoginLimiter, async (req, res) => {
       });
     }
 
-    if (!process.env.ADMIN_JWT_SECRET) {
-      return res.status(500).json({
-        message: "Server misconfigured",
-      });
-    }
+    const admin = await Admin.findOne({ email });
 
-    /* ================= FIND ADMIN ================= */
-
-        const admin = await Admin.findOne({ email });
-
+    // 🔒 LOCK CHECK
     if (admin?.lockUntil && admin.lockUntil > new Date()) {
       return res.status(403).json({
         message: "Account temporarily locked. Try later.",
       });
     }
 
+    // ✅ SAFE HASH
     const fakeHash =
-      "$2a$10$7a8f8d9f7a8f8d9f7a8f8uQy5Y1Qe7Y5Y1Qe7Y5Y1Qe7Y5Y1Qe7Y5";
+      "$2a$10$CwTycUXWue0Thq9StjUM0uJ8j6Wc9Ejo4kKDAdAm8YGtSNYGGyR0e";
 
     const hash = admin?.password || fakeHash;
 
@@ -58,28 +52,20 @@ router.post("/", adminLoginLimiter, async (req, res) => {
       });
     }
 
-    /* ================= SUCCESS RESET ================= */
+    // ✅ RESET
     admin.failedAttempts = 0;
     admin.lockUntil = undefined;
     await admin.save();
 
-    /* ================= TOKEN ================= */
     const token = jwt.sign(
       {
         id: admin._id,
         role: "admin",
         tokenVersion: admin.tokenVersion || 0,
       },
-      process.env.ADMIN_JWT_SECRET,
+      process.env.ADMIN_JWT_SECRET!,
       { expiresIn: "7d" }
     );
-
-    console.log("🔐 Admin login:", {
-      email: admin.email,
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
-      time: new Date(),
-    });
 
     res.json({
       success: true,
@@ -91,12 +77,11 @@ router.post("/", adminLoginLimiter, async (req, res) => {
     });
 
   } catch (err: any) {
-    console.error("❌ ADMIN LOGIN ERROR:", err.message);
+    console.error("❌ ADMIN LOGIN ERROR FULL:", err);
 
     res.status(500).json({
       message: "Login failed",
     });
   }
 });
-
 export default router;
