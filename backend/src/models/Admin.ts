@@ -63,6 +63,5 @@ AdminSchema.methods.isLocked = function () {
   return true;
 };
 
-AdminSchema.index({ email: 1 }, { unique: true });
 
 export default mongoose.model("Admin", AdminSchema);
