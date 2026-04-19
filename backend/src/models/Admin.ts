@@ -18,8 +18,8 @@ const AdminSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: ["admin", "superadmin"], // ✅ FIXED
-      default: "superadmin", // 🔥 since you said only super admin for now
+      enum: ["admin", "superadmin"],
+      default: "superadmin",
     },
 
     isActive: {
@@ -42,11 +42,11 @@ const AdminSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-AdminSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+/* ✅ FIXED HOOK */
+AdminSchema.pre("save", async function () {
+  if (!this.isModified("password")) return;
 
   this.password = await bcrypt.hash(this.password, 10);
-  next();
 });
 
 export default mongoose.model("Admin", AdminSchema);
