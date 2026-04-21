@@ -5,6 +5,9 @@ import UserTrust from "../models/UserTrust";
 import { generateOTP, otpExpiry } from "../utils/otp";
 import { runAntiFarmingChecks } from "./antiFarmingEngine";
 
+const MAX_DEVICES = 5;
+const OTP_COOLDOWN_MS = 60 * 1000; // 1 minute
+
 export async function verifyDevice({
   userId,
   fingerprint,
@@ -13,6 +16,12 @@ export async function verifyDevice({
   ip,
 }: any) {
 
+  /* ================= NORMALIZE ================= */
+  deviceName = deviceName || "Unknown Device";
+  platform = platform || "unknown";
+  ip = ip || "0.0.0.0";
+
+  /* ================= TRUST ================= */
   const trust =
     (await UserTrust.findOne({ userId })) ||
     (await UserTrust.create({ userId }));
@@ -22,12 +31,10 @@ export async function verifyDevice({
     fingerprint,
   });
 
-  /* ─────────────────────────
-     EXISTING DEVICE
-  ───────────────────────── */
-
+  /* =================================================
+     🔁 EXISTING DEVICE
+  ================================================= */
   if (device) {
-
     if (device.blocked) {
       return { allowed: false, reason: "BLOCKED_DEVICE" };
     }
@@ -38,19 +45,24 @@ export async function verifyDevice({
     await device.save();
 
     return { allowed: true, isNew: false };
-
   }
 
-  /* ─────────────────────────
-     NEW DEVICE DETECTED
-  ───────────────────────── */
+  /* =================================================
+     🚫 DEVICE LIMIT CHECK
+  ================================================= */
+  const totalDevices = await UserDevice.countDocuments({ userId });
 
-  const totalDevices = await UserDevice.countDocuments({
-    userId,
-  });
+  if (totalDevices >= MAX_DEVICES) {
+    return {
+      allowed: false,
+      reason: "DEVICE_LIMIT_REACHED",
+    };
+  }
 
+  /* =================================================
+     🆕 CREATE NEW DEVICE
+  ================================================= */
   device = await UserDevice.create({
-
     userId,
     fingerprint,
     deviceName,
@@ -61,42 +73,51 @@ export async function verifyDevice({
     riskScore: 20,
 
     loginCount: 1,
-    lastSeenAt: new Date()
-
+    lastSeenAt: new Date(),
   });
 
-  /* ─────────────────────────
-     CREATE DEVICE BINDING
-  ───────────────────────── */
-
+  /* =================================================
+     🔗 DEVICE BINDING
+  ================================================= */
   await DeviceBinding.create({
     userId,
     deviceId: device._id,
-    lastIp: ip
+    lastIp: ip,
   });
 
-  /* ─────────────────────────
-     REDUCE TRUST SCORE
-  ───────────────────────── */
+  /* =================================================
+     📉 TRUST REDUCTION (CONTROLLED)
+  ================================================= */
+  const penalty = totalDevices >= 2 ? 5 : 2;
 
-  trust.score = Math.max(0, trust.score - 10);
+  trust.score = Math.max(0, trust.score - penalty);
   await trust.save();
 
-  /* ─────────────────────────
-     RUN FRAUD CHECKS
-  ───────────────────────── */
-
+  /* =================================================
+     🧠 FRAUD CHECK
+  ================================================= */
   await runAntiFarmingChecks({
     userId,
     deviceId: device._id,
-    ip
+    ip,
   });
 
-  /* ─────────────────────────
-     OTP VERIFICATION
-  ───────────────────────── */
-
+  /* =================================================
+     🔐 OTP LOGIC (SAFE)
+  ================================================= */
   if (totalDevices >= 2) {
+    const existingOTP = await DeviceOTP.findOne({
+      userId,
+      fingerprint,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (existingOTP) {
+      return {
+        allowed: false,
+        reason: "OTP_REQUIRED",
+      };
+    }
 
     const otp = generateOTP();
 
@@ -105,18 +126,20 @@ export async function verifyDevice({
       fingerprint,
       otp,
       expiresAt: otpExpiry(),
+      createdAt: new Date(),
     });
 
     return {
       allowed: false,
       reason: "OTP_REQUIRED",
     };
-
   }
 
+  /* =================================================
+     ✅ FIRST / LOW RISK DEVICE
+  ================================================= */
   return {
     allowed: true,
     isNew: true,
   };
-
 }

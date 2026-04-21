@@ -2,14 +2,43 @@ import mongoose from "mongoose";
 
 const DeviceOTPSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    fingerprint: String,
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
+
+    fingerprint: {
+      type: String,
+      index: true,
+    },
+
     otp: String,
-    expiresAt: Date,
-    verified: { type: Boolean, default: false },
+
+    attempts: { type: Number, default: 0 },
+
+    verified: {
+      type: Boolean,
+      default: false,
+    },
+
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+
+    expiresAt: {
+      type: Date,
+      index: true,
+    },
   },
   { timestamps: true }
 );
 
-export default mongoose.model("DeviceOTP", DeviceOTPSchema);
+/* 🔥 AUTO CLEANUP (TTL INDEX) */
+DeviceOTPSchema.index(
+  { expiresAt: 1 },
+  { expireAfterSeconds: 0 }
+);
 
+export default mongoose.model("DeviceOTP", DeviceOTPSchema);
