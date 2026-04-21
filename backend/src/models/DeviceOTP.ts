@@ -29,8 +29,9 @@ const DeviceOTPSchema = new mongoose.Schema(
 
     expiresAt: {
       type: Date,
-      index: true,
+      expires: 0, 
     },
+    
   },
   { timestamps: true }
 );
