@@ -124,8 +124,8 @@ router.post("/", auth, async (req: any, res) => {
     }
 
     /* ================= CALCULATIONS ================= */
-    const userATC = Number((grossATC * 0.9).toFixed(6));
-    const profitATC = Number((grossATC * 0.1).toFixed(6));
+    const userATC = Number((grossATC * (1 - PROFIT_PERCENT)).toFixed(6));
+    const profitATC = Number((grossATC * PROFIT_PERCENT).toFixed(6));
 
     /* ================= APPLY ================= */
     wallet.totalMinutes -= minutes;
@@ -185,13 +185,14 @@ router.post("/", auth, async (req: any, res) => {
       amount: profitATC,
     });
 
+
     return res.json({
       success: true,
       minutesConverted: minutes,
       atcReceived: userATC,
       rate,
       remainingDailyMinutes:
-        maxMinutes - wallet.convertedTodayMinutes,
+      maxMinutes - wallet.convertedTodayMinutes,
     });
 
   } catch (err: any) {

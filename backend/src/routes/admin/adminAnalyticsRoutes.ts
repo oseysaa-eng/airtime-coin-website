@@ -10,6 +10,7 @@ import UserTrust from "../../models/UserTrust";
 import Wallet from "../../models/Wallet";
 import SystemWallet from "../../models/SystemWallet";
 
+
 const router = express.Router();
 
 /* =====================================================
@@ -128,21 +129,71 @@ router.get("/burn", adminAuth, async (_req, res) => {
   }
 });
 
+/* ================= PROFIT SUMMARY ================= */
+  router.get("/profit", adminAuth, async (_req, res) => {
+  try {
+    const wallet = await SystemWallet.findOne();
 
-router.get("/profit", adminAuth, async (req, res) => {
-  const wallet = await SystemWallet.findOne();
+    if (!wallet) {
+      return res.json({
+        totalProfitATC: 0,
+        dailyProfitATC: 0,
+        totalConversions: 0,
+        breakdown: {
+          conversion: 0,
+          calls: 0,
+          ads: 0,
+        },
+      });
+    }
 
-  res.json({
-    totalProfitATC: wallet?.totalProfitATC || 0,
-    dailyProfitATC: wallet?.dailyProfitATC || 0,
-    totalConversions: wallet?.totalConversions || 0,
+    res.json({
+      totalProfitATC: wallet.totalProfitATC || 0,
+      dailyProfitATC: wallet.dailyProfitATC || 0,
+      totalConversions: wallet.totalConversions || 0,
+      breakdown: {
+        conversion: wallet.profitFromConversion || 0,
+        calls: wallet.profitFromCalls || 0,
+        ads: wallet.profitFromAds || 0,
+      },
+    });
+  } catch (err) {
+    console.error("❌ PROFIT API ERROR:", err);
+    res.status(500).json({ message: "Failed to load profit" });
+  }
+});
 
-    breakdown: {
-      calls: wallet?.profitFromCalls || 0,
-      ads: wallet?.profitFromAds || 0,
-      conversion: wallet?.profitFromConversion || 0,
-    },
-  });
+router.get("/profit-trend", adminAuth, async (_req, res) => {
+  try {
+    const data = await Transaction.aggregate([
+      {
+        $match: {
+          type: "CONVERT",
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: "$createdAt",
+            },
+          },
+          profit: { $sum: "$meta.profitATC" },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    res.json({
+      trend: data.map(d => ({
+        date: d._id,
+        profit: d.profit,
+      })),
+    });
+  } catch {
+    res.status(500).json({ message: "Trend failed" });
+  }
 });
 
 /* =====================================================

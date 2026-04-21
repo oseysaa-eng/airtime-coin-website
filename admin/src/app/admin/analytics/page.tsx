@@ -13,11 +13,10 @@ import FraudHeatmap from "./components/FraudHeatmap";
 import FraudAlert from "./components/FraudAlert";
 
 import { connectAdminSocket } from "@/lib/adminSocket";
-"use client";
 
 import ProfitCard from "@/components/admin/ProfitCard";
-
-
+import ProfitChart from "@/components/admin/ProfitChart";
+import ProfitBreakdown from "@/components/admin/ProfitBreakdown";
 
 export default function AnalyticsPage() {
   const [overview, setOverview] = useState<any>(null);
@@ -25,35 +24,46 @@ export default function AnalyticsPage() {
   const [trend, setTrend] = useState<any[]>([]);
   const [fraud, setFraud] = useState<any[]>([]);
 
+  const [profit, setProfit] = useState<any>(null);
+  const [profitTrend, setProfitTrend] = useState<any[]>([]);
+
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
   const [alert, setAlert] = useState<any>(null);
 
-  /* ================================
-     LOAD INITIAL DATA (ONCE)
-  ================================= */
+  /* ================= LOAD DATA ================= */
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const [overviewRes, burnRes, trendRes, fraudRes] = await Promise.all([
+      const [
+        overviewRes,
+        burnRes,
+        trendRes,
+        fraudRes,
+        profitRes,
+        profitTrendRes,
+      ] = await Promise.all([
         adminApi.get("/analytics"),
         adminApi.get("/analytics/burn"),
         adminApi.get("/analytics/call-trend"),
         adminApi.get("/analytics/fraud-heatmap"),
+        adminApi.get("/analytics/profit"),
+        adminApi.get("/analytics/profit-trend"),
       ]);
 
       setOverview(overviewRes.data);
       setBurn(burnRes.data?.burnRate || []);
       setTrend(trendRes.data || []);
       setFraud(fraudRes.data || []);
+      setProfit(profitRes.data);
+      setProfitTrend(profitTrendRes.data?.trend || []);
 
-    } catch (err: any) {
+    } catch (err) {
       console.error("Analytics load error:", err);
       setError("Failed to load analytics");
     } finally {
@@ -63,43 +73,46 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
-  /* ================================
-     SOCKET LIVE UPDATES
-  ================================= */
+  /* ================= SOCKET ================= */
   useEffect(() => {
     const socket = connectAdminSocket();
     if (!socket) return;
 
-    /* LIVE ANALYTICS */
     socket.on("ADMIN_ANALYTICS_UPDATE", (data: any) => {
-      console.log("📡 Live update:", data);
+      // 🔥 ONLY update what changed
 
-      setOverview((prev: any) => ({
-        ...prev,
-        calls: (prev?.calls || 0) + 1,
-        minutes: (prev?.minutes || 0) + (data.minutes || 0),
-      }));
+      if (data.type === "PROFIT_UPDATE") {
+        setProfit((prev: any) => ({
+          ...(prev || {}),
+          totalProfitATC:
+            (prev?.totalProfitATC || 0) + data.amount,
+          dailyProfitATC:
+            (prev?.dailyProfitATC || 0) + data.amount,
+        }));
+      }
 
-      setTrend((prev: any[]) => [
-        ...prev.slice(-15),
-        {
-          date: new Date().toLocaleTimeString(),
-          calls: 1,
-        },
-      ]);
+      if (data.type === "CALL_UPDATE") {
+        setOverview((prev: any) => ({
+          ...(prev || {}),
+          calls: (prev?.calls || 0) + 1,
+          minutes: (prev?.minutes || 0) + (data.minutes || 0),
+        }));
+
+        setTrend((prev: any[]) => [
+          ...prev.slice(-15),
+          {
+            date: new Date().toLocaleTimeString(),
+            calls: 1,
+          },
+        ]);
+      }
     });
 
-    /* FRAUD ALERT */
     socket.on("FRAUD_ALERT", (data: any) => {
-      console.log("🚨 Fraud alert:", data);
-
       setAlert(data);
-
-      setTimeout(() => {
-        setAlert(null);
-      }, 5000);
+      setTimeout(() => setAlert(null), 5000);
     });
 
     return () => {
@@ -108,9 +121,7 @@ export default function AnalyticsPage() {
     };
   }, []);
 
-  /* ================================
-     FILTER HANDLER
-  ================================= */
+  /* ================= FILTER ================= */
   const handleFilterChange = async (f: string, t: string) => {
     setFrom(f);
     setTo(t);
@@ -121,16 +132,12 @@ export default function AnalyticsPage() {
       });
 
       setOverview(res.data);
-    } catch (err) {
+    } catch {
       console.log("Filter error");
     }
   };
 
-  
-
-  /* ================================
-     UI STATES
-  ================================= */
+  /* ================= UI STATES ================= */
   if (loading && !overview) {
     return <p className="p-6">Loading analytics...</p>;
   }
@@ -139,9 +146,7 @@ export default function AnalyticsPage() {
     return <div className="p-6 text-red-500">{error}</div>;
   }
 
-  /* ================================
-     MAIN UI
-  ================================= */
+  /* ================= UI ================= */
   return (
     <div className="p-6 space-y-6">
 
@@ -156,18 +161,22 @@ export default function AnalyticsPage() {
         />
       </div>
 
+      {/* ================= TOP GRID ================= */}
       <div className="grid md:grid-cols-2 gap-6">
-      <ProfitCard />
-      <OverviewCards data={overview} />
-    </div>
+        <ProfitCard />
+        <OverviewCards data={overview} />
+      </div>
+
+      {/* ================= PROFIT SECTION ================= */}
+      <div className="grid md:grid-cols-2 gap-6">
+        <ProfitBreakdown data={profit} />
+        <ProfitChart data={profitTrend} />
+      </div>
 
       {/* FRAUD ALERT */}
       <FraudAlert alert={alert} />
 
-      {/* KPI */}
-      <OverviewCards data={overview} />
-
-      {/* CHARTS */}
+      {/* ================= CHARTS ================= */}
       <div className="grid grid-cols-2 gap-6">
         <TrustChart trust={overview?.trustDistribution || []} />
         <CallTrendChart data={trend} />
@@ -180,7 +189,6 @@ export default function AnalyticsPage() {
 
       {/* WARNING */}
       <RunwayWarning pools={burn} />
-
     </div>
   );
 }
