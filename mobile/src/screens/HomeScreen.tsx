@@ -15,9 +15,7 @@ import {
 import { LineChart } from "react-native-chart-kit";
 
 import API from "../api/api";
-import { useWallet } from "../context/WalletContext";
 import { useAnimatedNumber } from "../hooks/useAnimatedNumber";
-import { subscribeDashboard } from "../utils/events";
 import { getGreeting } from "../utils/greeting";
 
 import { useRef, useMemo } from "react";
@@ -36,16 +34,21 @@ type Tx = {
   
 };
 
-type Dashboard = {
+  type Dashboard = {
   name: string;
   balance: number;
+  balanceCedis: number;   // ✅ add
   totalMinutes: number;
   todayMinutes: number;
+  todayATC: number;       // ✅ add
   weeklyMinutes: number[];
+  weeklyATC: number[];    // ✅ add
+  rate: number;           // ✅ add
+  price: number;          // ✅ add
   recentTx: Tx[];
   trustStatus?: "excellent" | "reduced" | "limited" | "blocked";
-  
 };
+  
 
 
 
@@ -83,33 +86,40 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const loadPrice = useCallback(async () => {
-    try {
-      const res = await API.get("/api/price");
-      setPrice(res.data?.price ?? null);
-    } catch (e) {
-      console.log("Price error:", e);
-    }
-  }, []);
-
-useFocusEffect(
-  useCallback(() => {
-    fetchDashboard();
-
-    return () => {}; // ✅ REQUIRED cleanup
-  }, [fetchDashboard])
-);
-
-   /* ================= INIT ================= */
 
   useEffect(() => {
-    loadPrice();
-  }, []);
+  fetchDashboard();
+}, []);
 
+   /* ================= INIT ================= */
+const handlePriceUpdate = useCallback((data: any) => {
+  setDashboard(prev => {
+    if (!prev) return prev;
+
+    const newPrice = data.price;
+
+    return {
+      ...prev,
+      price: newPrice,
+      balanceCedis: prev.balance * newPrice,
+      // optional but cleaner consistency
+    };
+  });
+}, []);
+
+useSocketEvent("PRICE_UPDATE", handlePriceUpdate);
   /* ================= SOCKET ================= */
 
     /* WALLET */
-const handleWalletUpdate = useCallback((data: any) => {
+
+    const handleWalletUpdate = useCallback((data: any) => {
+
+  // 🔥 trigger sync occasionally
+  if (Date.now() - lastUpdateRef.current > 10000) {
+    lastUpdateRef.current = Date.now();
+    fetchDashboard();
+  }
+
   setDashboard((prev: any) => {
     if (!prev) return prev;
 
@@ -122,7 +132,9 @@ const handleWalletUpdate = useCallback((data: any) => {
         data.todayMinutes ?? prev.todayMinutes + (data.minutes || 0),
     };
   });
-}, []);
+
+}, [fetchDashboard]);
+
 
     /* MINUTES */
 const handleMinutesCredit = useCallback((data: any) => {
@@ -157,32 +169,21 @@ useEffect(() => {
 /* ================= VALUES ================= */
   const atcValue = dashboard?.balance ?? 0;
   const minutesValue = dashboard?.totalMinutes ?? 0;
-  const RATE = 0.0025; // same as backend or fetch from API
+
 
 
   const animatedATC = useAnimatedNumber(atcValue);
   const animatedMinutes = useAnimatedNumber(minutesValue);
   const trust = dashboard?.trustStatus || "blocked";
+  const balanceCedis = dashboard?.balanceCedis ?? 0;
 
   /* ================= GROWTH METRICS ================= */
 
-const todayATC = useMemo(() => {
-  return (dashboard?.todayMinutes ?? 0) * RATE;
-}, [dashboard?.todayMinutes]);
-
-const todayCedis = useMemo(() => {
-  return todayATC * (price ?? 0);
-}, [todayATC, price]);
-
-const minutesToATC = useMemo(() => {
-  return (dashboard?.totalMinutes ?? 0) * RATE;
-}, [dashboard?.totalMinutes]);
-
-
-const atcToCedis = useMemo(() => {
-  if (!price || !atcValue) return 0;
-  return atcValue * price;
-}, [atcValue, price]);
+const formatMoney = (val: number) => {
+  if (val === 0) return "0.00";
+  if (val < 0.01) return val.toFixed(6);
+  return val.toFixed(2);
+};
 
 const DAILY_TARGET = 50;
 const remainingMinutes = Math.max(
@@ -251,6 +252,13 @@ const chartData = useMemo(() => ({
     return creditTypes.includes(type) ? "+" : "-";
 
   };
+
+
+    const safePrice = dashboard?.price ?? 0;
+    const safeTodayATC = dashboard?.todayATC ?? 0;
+    const safeRate = dashboard?.rate ?? 0;
+    const safeTodayMinutes = dashboard?.todayMinutes ?? 0;
+    const safeBalanceCedis = dashboard?.balanceCedis ?? 0;
 
       return (
     <ScrollView
@@ -330,37 +338,39 @@ style={[
           Tap to buy airtime or data
         </Text>
 
-          {price !== null && !hideBalance && (
-          <Text style={{ color: "#ccfbf1", marginTop: 4 }}>
-
-            ≈ ₵{atcToCedis.toFixed(4)}
-
-          </Text>
-        )}
+  
+            {dashboard?.price && !hideBalance && (
+            <Text style={{ color: "#ccfbf1", marginTop: 4 }}>
+              ≈ ₵{formatMoney(safeBalanceCedis)}
+            </Text>
+          )}
+       
       </TouchableOpacity>
 
             <View style={s.card}>
           <Text style={s.cardTitle}>Today Earnings</Text>
 
+        
+
           <Text style={[s.balance, { color: "#0ea5a4" }]}>
-            {todayATC.toFixed(4)} ATC
-          </Text>
+        {safeTodayATC.toFixed(4)} ATC
+      </Text>
 
-          <Text style={s.hint}>
-               ≈ ₵{todayCedis.toFixed(4)} earned today
-
-          </Text>
+      <Text style={s.hint}>
+        ≈ ₵{formatMoney(safeTodayATC * safePrice)}
+      </Text>
         </View>
 
       {/* PRICE */}
 
-        {price !== null && !hideBalance && (
-        <View style={s.card}>
-          <Text style={s.cardTitle}>ATC Live Price</Text>
-          <Text style={s.balance}>1 ATC = ₵{price.toFixed(4)}</Text>
-        </View>
-
-      )}
+      {dashboard?.price && !hideBalance && (
+  <View style={s.card}>
+    <Text style={s.cardTitle}>ATC Live Price</Text>
+    <Text style={s.balance}>
+      1 ATC = ₵{safePrice.toFixed(4)}
+    </Text>
+  </View>
+)}
 
       {/* MINUTES */}
 
@@ -385,9 +395,9 @@ style={[
           {Math.floor(animatedMinutes)} mins
         </Text>
 
-      <Text style={s.hint}>
-  Today: {dashboard.todayMinutes} mins • 
-  {((dashboard.todayMinutes ?? 0) * RATE).toFixed(4)} ATC
+<Text style={s.hint}>
+  Today: {dashboard.todayMinutes} mins •{" "}
+  {(safeTodayMinutes * safeRate).toFixed(4)} ATC
 </Text>
 
       </TouchableOpacity> 

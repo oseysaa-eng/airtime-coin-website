@@ -150,50 +150,44 @@ const todayATC = Number((todayMinutes * rate).toFixed(6));
 const weeklyATC = weeklyMinutes.map( (m: number) => Number((m * rate).toFixed(6)));
 
 res.json({
-  user: {
-    name: user.name || "User",
-    profileImage: user.profileImage || null,
-  },
+  
+  res.json({
+  name: user.name || "User",
+  profileImage: user.profileImage || null,
 
-  wallet: {
-    balanceATC,
-    balanceCedis,
-    staked: wallet.stakedATC || 0,
-  },
+  // ✅ WALLET
+  balance: balanceATC,
+  balanceCedis,
 
-  earnings: {
-    totalMinutes: wallet.totalMinutes || 0,
-    todayMinutes,
-    todayATC,
-  },
+  // ✅ EARNINGS
+  totalMinutes: wallet.totalMinutes || 0,
+  todayMinutes,
+  todayATC,
 
-  weekly: {
-    minutes: weeklyMinutes,
-    atc: weeklyATC,
-  },
+  // ✅ WEEKLY
+  weeklyMinutes,
+  weeklyATC,
 
-  economics: {
-    rate,
-    price,
-  },
+  // ✅ ECONOMICS
+  rate,
+  price,
 
-  trust: {
-    score: trustScore,
-    status: trustStatus,
-  },
+  // ✅ TRUST
+  trustStatus,
+  trustScore,
 
+  // ✅ OTHER
   recentTx,
 
-  emission: {
-    multiplier: emission?.multiplier ?? 1,
-    phase: emission?.phase ?? 0,
-  },
+  emissionMultiplier: emission?.multiplier ?? 1,
+  emissionPhase: emission?.phase ?? 0,
 
   beta: {
     active: settings?.beta?.active ?? false,
     conversionEnabled: settings?.beta?.showConversion ?? false,
     withdrawalEnabled: settings?.beta?.showWithdrawals ?? false,
   },
+}
 });
     
   } catch (err) {
