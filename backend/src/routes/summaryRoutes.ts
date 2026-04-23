@@ -32,13 +32,6 @@ router.get("/", auth, async (req: any, res) => {
       });
     }
 
-    const updatedStreak = await updateStreak(user, todayMinutes);
-
-    // save async (non-blocking)
-    User.updateOne(
-      { _id: userId },
-      { streak: updatedStreak }
-    ).catch(() => {});
 
     /* ================= WALLET SAFE (ATOMIC) ================= */
     const wallet = walletRaw
@@ -136,6 +129,15 @@ const weeklyMinutes = [
       .limit(5)
       .select("type amount source createdAt")
       .lean();
+
+
+  const updatedStreak = await updateStreak(user, todayMinutes);
+
+    // save async (non-blocking)
+    User.updateOne(
+      { _id: userId },
+      { streak: updatedStreak }
+    ).catch(() => {});
 
     /* ================= TRUST ================= */
 

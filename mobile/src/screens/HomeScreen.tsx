@@ -31,6 +31,10 @@ type Tx = {
   amount: number;
   source: string;
   createdAt: string;
+  streak: {
+  current: number;
+  longest: number;
+};
   
 };
 
@@ -196,7 +200,7 @@ const progressPercent = Math.min(
 );
 
 // 🔥 fake streak for now (replace later from backend)
-const streakDays = 3;
+const streakDays = dashboard?.streak?.current ?? 0;
 
 
   /* ================= CHART ================= */
@@ -277,6 +281,8 @@ const chartData = useMemo(() => ({
       
     <View style={[s.card, s.streakGlow]}>
   <Text style={s.cardTitle}>🔥 Streak</Text>
+
+  
 
   <Text style={[s.balance, { color: "#f59e0b" }]}>
     {streakDays} days
