@@ -80,7 +80,7 @@ import WithdrawPinScreen from './src/screens/WithdrawPinScreen';
 import WithdrawScreen from './src/screens/WithdrawScreen';
 import WithdrawSuccessScreen from './src/screens/WithdrawSuccessScreen';
 import { default as AppDrawer, default as DrawerNavigator } from './src/navigation/DrawerNavigator';
-
+import { SocketProvider } from "./src/context/SocketProvider";
 
 
 
@@ -106,6 +106,7 @@ function RootNavigator() {
 
   return (
     <SafeAreaProvider>
+      <SocketProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <PaperProvider theme={paperTheme}>
           <NavigationContainer theme={navigationTheme}>
@@ -178,6 +179,7 @@ function RootNavigator() {
           </NavigationContainer>
         </PaperProvider>
       </GestureHandlerRootView>
+     </SocketProvider> 
     </SafeAreaProvider>
   );
 }
@@ -191,51 +193,28 @@ function AppBootstrap() {
 
   /* 🔥 CORE BOOTSTRAP */
   useEffect(() => {
-    const bootstrapRealtime = async () => {
-      const token = await AsyncStorage.getItem("userToken");
-      const id = await AsyncStorage.getItem("userId");
+  const init = async () => {
+    const token = await AsyncStorage.getItem("userToken");
+    const id = await AsyncStorage.getItem("userId");
 
-      // ✅ BLOCK if not logged in
-      if (!token || !id) {
-        console.log("⚠️ No session → skip bootstrap");
-        return;
-      }
+    if (!token || !id) {
+      console.log("⚠️ No session → skip bootstrap");
+      return;
+    }
 
-      setUser(id);
+    setUser(id);
 
-      try {
-        await fetchKyc();
-        await fetchPin();
-      } catch (e) {
-        console.log("⚠️ Bootstrap fetch skipped");
-      }
+    try {
+      await fetchKyc();
+      await fetchPin();
+    } catch {
+      console.log("⚠️ Bootstrap fetch skipped");
+    }
+  };
 
-      try {
-        // ✅ FIX: no URL param
-        await connectSocket();
+  init();
+}, []);
 
-        // ❌ REMOVE THIS (handled inside socket)
-        // joinUserRoom(id);
-
-        // ✅ ONE SOURCE OF TRUTH
-        const cleanup = await listenSocket();
-
-        return cleanup;
-      } catch (err) {
-        console.log("❌ Socket bootstrap failed");
-      }
-    };
-
-    let cleanup: any;
-
-    bootstrapRealtime().then((fn) => {
-      cleanup = fn;
-    });
-
-    return () => {
-      cleanup && cleanup();
-    };
-  }, []);
 
   /* 🔔 PUSH NOTIFICATIONS */
   useEffect(() => {

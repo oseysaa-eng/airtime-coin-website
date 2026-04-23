@@ -5,95 +5,73 @@ import { AppState } from "react-native";
 const SOCKET_URL = "https://atc-backend-cn4f.onrender.com";
 
 let socket: Socket | null = null;
-let connectingPromise: Promise<Socket | null> | null = null;
+let connecting = false;
 
-/* =====================================
-   CONNECT SOCKET (SINGLETON SAFE)
-===================================== */
+/* ================= CONNECT ================= */
 export const connectSocket = async (): Promise<Socket | null> => {
+  if (socket?.connected) return socket;
+  if (connecting) return socket;
+
+  connecting = true;
+
   try {
-    // ✅ already connected
-    if (socket?.connected) return socket;
+    const token = await AsyncStorage.getItem("userToken");
 
-    // ✅ already connecting (prevent duplicates)
-    if (connectingPromise) return connectingPromise;
+    if (!token) {
+      console.log("⚠️ No token → skip socket");
+      connecting = false;
+      return null;
+    }
 
-    connectingPromise = (async () => {
-      const token = await AsyncStorage.getItem("userToken");
+    console.log("🔌 Initializing socket...");
 
-      if (!token) {
-        console.log("⚠️ No token → skip socket");
-        connectingPromise = null;
-        return null;
+    socket = io(SOCKET_URL, {
+      auth: { token },
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionDelay: 2000,
+    });
+
+    socket.on("connect", () => {
+      console.log("🟢 Socket connected:", socket?.id);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("🔴 Socket disconnected:", reason);
+    });
+
+    socket.on("connect_error", async (err) => {
+      console.log("❌ Connect error:", err.message);
+
+      if (err.message === "Unauthorized") {
+        await AsyncStorage.multiRemove([
+          "userToken",
+          "refreshToken",
+          "userId",
+        ]);
+
+        disconnectSocket();
       }
+    });
 
-      console.log("🔌 Initializing socket...");
+    socket.on("error", (err) => {
+      console.log("❌ Socket error:", err);
+    });
 
-      socket = io(SOCKET_URL, {
-        auth: { token },
-        transports: ["websocket"],
-        autoConnect: true,
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 2000,
-      });
-
-      /* ================= EVENTS ================= */
-
-      socket.on("connect", () => {
-        console.log("🟢 Socket connected:", socket?.id);
-      });
-
-      socket.on("disconnect", (reason) => {
-        console.log("🔴 Socket disconnected:", reason);
-      });
-
-      socket.on("connect_error", async (err) => {
-        console.log("❌ Connect error:", err.message);
-
-        if (err.message === "Unauthorized") {
-          console.log("🔐 Token expired → logout");
-
-          await AsyncStorage.multiRemove([
-            "userToken",
-            "refreshToken",
-            "userId",
-          ]);
-
-          disconnectSocket();
-        }
-      });
-
-      socket.on("error", (err) => {
-        console.log("❌ Socket error:", err);
-      });
-
-      connectingPromise = null;
-      return socket;
-    })();
-
-    return connectingPromise;
+    return socket;
 
   } catch (err) {
-    connectingPromise = null;
     console.log("❌ Socket init failed:", err);
     return null;
+  } finally {
+    connecting = false;
   }
 };
 
-/* =====================================
-   GET SOCKET
-===================================== */
-export const getSocket = async (): Promise<Socket | null> => {
-  if (!socket || !socket.connected) {
-    return await connectSocket();
-  }
-  return socket;
-};
+/* ================= GET ================= */
+export const getSocket = () => socket;
 
-/* =====================================
-   DISCONNECT
-===================================== */
+/* ================= DISCONNECT ================= */
 export const disconnectSocket = () => {
   if (socket) {
     console.log("🔌 Socket manually disconnected");
@@ -103,28 +81,23 @@ export const disconnectSocket = () => {
   }
 };
 
-/* =====================================
-   SAFE EVENT SUBSCRIBE
-===================================== */
-export const onSocketEvent = async (
+/* ================= SUBSCRIBE ================= */
+export const onSocketEvent = (
   event: string,
   cb: (data: any) => void
 ) => {
-  const s = await getSocket();
-  if (!s) return () => {};
+  if (!socket) {
+    console.warn("⚠️ Socket not ready for:", event);
+    return () => {};
+  }
 
-  // ✅ prevent duplicate listeners
-  s.off(event);
-  s.on(event, cb);
+  socket.off(event, cb);
+  socket.on(event, cb);
 
-  return () => {
-    s.off(event, cb);
-  };
+  return () => socket?.off(event, cb);
 };
 
-/* =====================================
-   APP STATE (AUTO RECONNECT)
-===================================== */
+/* ================= APP STATE ================= */
 let currentState = AppState.currentState;
 
 AppState.addEventListener("change", async (nextState) => {

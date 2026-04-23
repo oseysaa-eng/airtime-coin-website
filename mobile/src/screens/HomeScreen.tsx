@@ -19,8 +19,9 @@ import { useWallet } from "../context/WalletContext";
 import { useAnimatedNumber } from "../hooks/useAnimatedNumber";
 import { subscribeDashboard } from "../utils/events";
 import { getGreeting } from "../utils/greeting";
-import { connectSocket, onSocketEvent } from "../services/socket";
-import { useRef } from "react";
+
+import { useRef, useMemo } from "react";
+import { useSocketEvent } from "../hooks/useSocket";
 
 
 const screenWidth = Dimensions.get("window").width;
@@ -42,7 +43,7 @@ type Dashboard = {
   todayMinutes: number;
   weeklyMinutes: number[];
   recentTx: Tx[];
-  trustStatus?: "good" | "reduced" | "limited" | "blocked";
+  trustStatus?: "excellent" | "reduced" | "limited" | "blocked";
   
 };
 
@@ -63,12 +64,13 @@ export default function HomeScreen() {
   const lastUpdateRef = useRef(0);
   const [rewardPopup, setRewardPopup] = useState<number | null>(null);
   const [isEarning, setIsEarning] = useState(false);
+  const popupTimeoutRef = useRef<any>(null);
+  
   
   
 
 
   /* ================= FETCH ================= */
-
   const fetchDashboard = useCallback(async () => {
     try {
       const res = await API.get("/api/summary");
@@ -90,103 +92,125 @@ export default function HomeScreen() {
     }
   }, []);
 
-
-
-  useFocusEffect(
+useFocusEffect(
   useCallback(() => {
     fetchDashboard();
-  }, [])
+
+    return () => {}; // ✅ REQUIRED cleanup
+  }, [fetchDashboard])
 );
 
    /* ================= INIT ================= */
 
   useEffect(() => {
-    fetchDashboard();
     loadPrice();
   }, []);
 
   /* ================= SOCKET ================= */
 
-
-useEffect(() => {
-  let unsubWallet: any;
-  let unsubMinutes: any;
-
-  let mounted = true;
-
-  const setup = async () => {
-    const socket = await connectSocket();
-    if (!socket || !mounted) return;
-
-    const attachListeners = async () => {
-      console.log("✅ Socket listeners attached");
-
-      /* ================= WALLET UPDATE ================= */
-unsubWallet = await onSocketEvent("WALLET_UPDATE", async (data) => {
-  console.log("🔥 WALLET_UPDATE:", data);
-
+    /* WALLET */
+const handleWalletUpdate = useCallback((data: any) => {
   setDashboard((prev: any) => {
     if (!prev) return prev;
-
-    const minutesDelta = data.minutes || 0;
 
     return {
       ...prev,
       balance: data.balance ?? prev.balance,
       totalMinutes:
-        data.totalMinutes ??
-        (prev.totalMinutes || 0) + minutesDelta,
+        data.totalMinutes ?? prev.totalMinutes + (data.minutes || 0),
       todayMinutes:
-        data.todayMinutes ??
-        (prev.todayMinutes || 0) + minutesDelta,
+        data.todayMinutes ?? prev.todayMinutes + (data.minutes || 0),
     };
   });
+}, []);
 
-  // ✅ 🔥 CRITICAL: refresh weekly data
-  fetchDashboard();
-});
+    /* MINUTES */
+const handleMinutesCredit = useCallback((data: any) => {
+  const earned = data?.minutes || 0;
+  if (!earned) return;
 
-      /* ================= MINUTES CREDIT ================= */
-      unsubMinutes = await onSocketEvent("MINUTES_CREDIT", (data) => {
-        console.log("⚡ MINUTES_CREDIT:", data);
+  if (popupTimeoutRef.current) {
+    clearTimeout(popupTimeoutRef.current);
+  }
 
-        const earned = data?.minutes || 0;
+  setRewardPopup((prev) => (prev ? prev + earned : earned));
+  setIsEarning(true);
 
-        if (!earned) return;
+  popupTimeoutRef.current = setTimeout(() => {
+    setRewardPopup(null);
+    setIsEarning(false);
+  }, 2000);
+}, []);
 
-        setRewardPopup(earned);
-        setIsEarning(true);
+useSocketEvent("WALLET_UPDATE", handleWalletUpdate);
+useSocketEvent("MINUTES_CREDIT", handleMinutesCredit);
 
-        setTimeout(() => {
-          setRewardPopup(null);
-          setIsEarning(false);
-        }, 2000);
-      });
-    };
 
-    if (socket.connected) {
-      attachListeners();
-    } else {
-      socket.once("connect", attachListeners);
-    }
-  };
-
-  setup();
-
+useEffect(() => {
   return () => {
-    mounted = false;
-    unsubWallet?.();
-    unsubMinutes?.();
+    if (popupTimeoutRef.current) {
+      clearTimeout(popupTimeoutRef.current);
+    }
   };
 }, []);
 
 /* ================= VALUES ================= */
   const atcValue = dashboard?.balance ?? 0;
   const minutesValue = dashboard?.totalMinutes ?? 0;
+  const RATE = 0.0025; // same as backend or fetch from API
 
 
   const animatedATC = useAnimatedNumber(atcValue);
   const animatedMinutes = useAnimatedNumber(minutesValue);
+  const trust = dashboard?.trustStatus || "blocked";
+
+  /* ================= GROWTH METRICS ================= */
+
+const todayATC = useMemo(() => {
+  return (dashboard?.todayMinutes ?? 0) * RATE;
+}, [dashboard?.todayMinutes]);
+
+const todayCedis = useMemo(() => {
+  return todayATC * (price ?? 0);
+}, [todayATC, price]);
+
+const minutesToATC = useMemo(() => {
+  return (dashboard?.totalMinutes ?? 0) * RATE;
+}, [dashboard?.totalMinutes]);
+
+
+const atcToCedis = useMemo(() => {
+  if (!price || !atcValue) return 0;
+  return atcValue * price;
+}, [atcValue, price]);
+
+const DAILY_TARGET = 50;
+const remainingMinutes = Math.max(
+  DAILY_TARGET - (dashboard?.todayMinutes ?? 0),
+  0
+);
+const progressPercent = Math.min(
+  ((dashboard?.todayMinutes ?? 0) / DAILY_TARGET) * 100,
+  100
+);
+
+// 🔥 fake streak for now (replace later from backend)
+const streakDays = 3;
+
+
+  /* ================= CHART ================= */
+    const weeklyData = useMemo(() => {
+  return Array.isArray(dashboard?.weeklyMinutes) &&
+    dashboard?.weeklyMinutes.length === 7
+    ? dashboard.weeklyMinutes.map(n => Number(n) || 0)
+    : defaultChart;
+}, [dashboard?.weeklyMinutes]);
+
+const chartData = useMemo(() => ({
+  labels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+  datasets: [{ data: weeklyData.map(n => Math.floor(n)) }]
+}), [weeklyData]);
+
 
   /* ================= REFRESH ================= */
 
@@ -218,20 +242,6 @@ unsubWallet = await onSocketEvent("WALLET_UPDATE", async (data) => {
 
 
 
- /* ================= CHART ================= */
-
-    const weeklyData =
-  dashboard?.weeklyMinutes?.length === 7
-    ? dashboard.weeklyMinutes
-    : defaultChart;
-
-  const chartData = {
-    labels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-    datasets: [{ data: weeklyData.map(n => Math.floor(n)) }]
-  };
-
-
-
   /* TRANSACTION SIGN */
 
   const getTxSign = (type:string) => {
@@ -256,6 +266,18 @@ unsubWallet = await onSocketEvent("WALLET_UPDATE", async (data) => {
       )}
 
       <Text style={s.title}>{getGreeting(dashboard.name)}</Text>
+      
+    <View style={[s.card, s.streakGlow]}>
+  <Text style={s.cardTitle}>🔥 Streak</Text>
+
+  <Text style={[s.balance, { color: "#f59e0b" }]}>
+    {streakDays} days
+  </Text>
+
+  <Text style={s.hint}>
+    Keep earning daily to grow your streak
+  </Text>
+</View>
 
 
       {/* BETA */}
@@ -270,15 +292,16 @@ unsubWallet = await onSocketEvent("WALLET_UPDATE", async (data) => {
         <View style={s.liveRow}>
     <View style={[s.liveDot, isEarning && s.livePulse]} />
     <Text style={s.liveText}>
-      {isEarning ? "Earning now ⚡" : "Live earnings active"}
+      {isEarning
+  ? "⚡ Earning in progress..."
+  : "🚀 Start earning to increase your balance"}
     </Text>
   </View>
+  
 
         {/* ATC BALANCE */}
 
     <TouchableOpacity
-
-
 style={[
   s.primaryCard,
   isEarning && s.earningCard
@@ -307,18 +330,31 @@ style={[
           Tap to buy airtime or data
         </Text>
 
-        {price && !hideBalance && (
+          {price !== null && !hideBalance && (
           <Text style={{ color: "#ccfbf1", marginTop: 4 }}>
-            ≈ ₵{(animatedATC * price).toFixed(2)}
+
+            ≈ ₵{atcToCedis.toFixed(4)}
+
           </Text>
         )}
-
       </TouchableOpacity>
+
+            <View style={s.card}>
+          <Text style={s.cardTitle}>Today Earnings</Text>
+
+          <Text style={[s.balance, { color: "#0ea5a4" }]}>
+            {todayATC.toFixed(4)} ATC
+          </Text>
+
+          <Text style={s.hint}>
+               ≈ ₵{todayCedis.toFixed(4)} earned today
+
+          </Text>
+        </View>
 
       {/* PRICE */}
 
-      {price !== null && (
-
+        {price !== null && !hideBalance && (
         <View style={s.card}>
           <Text style={s.cardTitle}>ATC Live Price</Text>
           <Text style={s.balance}>1 ATC = ₵{price.toFixed(4)}</Text>
@@ -349,12 +385,18 @@ style={[
           {Math.floor(animatedMinutes)} mins
         </Text>
 
-        <Text style={s.hint}>
-        Today: {dashboard.todayMinutes} mins • ~₵
-        {(dashboard.todayMinutes * (price || 0)).toFixed(2)}
-      </Text>
+      <Text style={s.hint}>
+  Today: {dashboard.todayMinutes} mins • 
+  {((dashboard.todayMinutes ?? 0) * RATE).toFixed(4)} ATC
+</Text>
 
       </TouchableOpacity> 
+
+      {(dashboard?.totalMinutes ?? 0) === 0 && (
+  <Text style={[s.hint, { color: "#ef4444" }]}>
+    ⚡ Start earning to see your rewards here
+  </Text>
+)}
 
       {/* DAILY PROGRESS */}
 
@@ -367,7 +409,7 @@ style={[
             style={[
               s.progressFill,
               {
-                width:`${Math.min((dashboard.todayMinutes/50)*100,100)}%`,
+                width: `${progressPercent}%`,
                 backgroundColor:"#0ea5a4"
               }
             ]}
@@ -375,16 +417,58 @@ style={[
         </View>
 
         <Text style={s.hint}>
-          {dashboard.todayMinutes} / 50 mins earned today
+          {dashboard.todayMinutes} / {DAILY_TARGET} mins earned today
         </Text>
 
       </View>
+
+      <View style={s.card}>
+  <Text style={s.cardTitle}>🎯 Next Reward</Text>
+
+  {remainingMinutes > 0 ? (
+    <>
+      <Text style={s.balance}>
+        {remainingMinutes} mins to go
+      </Text>
+
+      <Text style={s.hint}>
+        Earn more to unlock full daily reward 🚀
+      </Text>
+    </>
+  ) : (
+    <>
+      <Text style={[s.balance, { color: "#22c55e" }]}>
+        🎉 Goal Reached!
+      </Text>
+
+      <Text style={s.hint}>
+        You’ve maxed today’s earning
+      </Text>
+    </>
+  )}
+</View>
+
+
+<TouchableOpacity
+  style={{
+    backgroundColor: "#0ea5a4",
+    padding: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    marginBottom: 20,
+  }}
+  onPress={() => navigation.navigate("Earn")}
+>
+  <Text style={{ color: "#fff", fontWeight: "700" }}>
+    🚀 Start Earning Now
+  </Text>
+</TouchableOpacity>
 
       
 
       {/* TRUST */}
 
-      {dashboard.trustStatus && (
+      { trust && (
 
         <View style={s.trustCard}>
 
@@ -398,18 +482,18 @@ style={[
                 s.progressFill,
                 {
                   width:
-                    dashboard.trustStatus === "good"
+                    trust === "excellent"
                       ? "100%"
-                      : dashboard.trustStatus === "reduced"
+                      :  trust === "reduced"
                       ? "70%"
-                      : dashboard.trustStatus === "limited"
+                      :  trust === "limited"
                       ? "30%"
                       : "5%",
 
                   backgroundColor:
-                    dashboard.trustStatus === "good"
+                trust === "excellent"
                       ? "#22c55e"
-                      : dashboard.trustStatus === "reduced"
+                      : trust === "reduced"
                       ? "#f59e0b"
                       : "#ef4444"
                 }
@@ -418,17 +502,18 @@ style={[
           </View>
 
           <Text style={s.trustHint}>
-            Status: {dashboard.trustStatus.toUpperCase()}
+            Status: { trust.toUpperCase()}
           </Text>
 
         </View>
+
 
       )}
 
       {/* TOTAL EARNED */}
 
       <View style={s.card}>
-        <Text style={s.cardTitle}>Total Earned</Text>
+        <Text style={s.cardTitle}>Lifetime Minutes</Text>
 
         <Text style={s.balance}>
           {Math.floor(animatedMinutes)} mins
@@ -570,6 +655,13 @@ earningCard: {
   shadowOpacity: 0.6,
   shadowRadius: 12,
   elevation: 12,
+},
+
+streakGlow: {
+  shadowColor: "#f59e0b",
+  shadowOpacity: 0.8,
+  shadowRadius: 10,
+  elevation: 10,
 },
 
 });

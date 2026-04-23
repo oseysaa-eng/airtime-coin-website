@@ -48,17 +48,22 @@ router.get("/", auth, async (req: any, res) => {
       const last = new Date(wallet.lastDailyReset);
 
       if (now.toDateString() !== last.toDateString()) {
+
+
         todayMinutes = 0;
 
-        // 🔥 async safe reset
-        Wallet.updateOne(
-          { userId },
-          {
-            todayMinutes: 0,
-            dailyEarned: { ads: 0, calls: 0, surveys: 0 },
-            lastDailyReset: now,
-          }
-        ).catch(() => {});
+      // keep response consistent immediately
+      wallet.todayMinutes = 0;
+
+      Wallet.updateOne(
+        { userId },
+        {
+          todayMinutes: 0,
+          dailyEarned: { ads: 0, calls: 0, surveys: 0 },
+          lastDailyReset: new Date(),
+        }
+      ).catch(() => {});
+
       }
     }
 
@@ -87,7 +92,10 @@ const weeklyData = await Transaction.aggregate([
   {
     $group: {
       _id: { $dayOfWeek: "$createdAt" },
-      minutes: { $sum: "$meta.minutes" }, // ✅ FIX (REAL MINUTES)
+
+      minutes: {
+  $sum: { $ifNull: ["$meta.minutes", 0] }
+}
     },
   },
 ]);
@@ -125,40 +133,69 @@ const weeklyMinutes = [
     const trustScore = trust?.score ?? 100;
 
     let trustStatus = "excellent";
-    if (trustScore < 80) trustStatus = "good";
-    if (trustScore < 60) trustStatus = "warning";
-    if (trustScore < 40) trustStatus = "blocked";
+if (trustScore < 80) trustStatus = "reduced";
+if (trustScore < 60) trustStatus = "limited";
+if (trustScore < 40) trustStatus = "blocked";
 
     /* ================= RESPONSE ================= */
 
-    res.json({
-      name: user.name || "User",
-      profileImage: user.profileImage || null,
+        /* ================= ECONOMICS ================= */
 
-      balance: wallet.balanceATC || 0,
-      staked: wallet.stakedATC || 0,
+const rate = settings?.economics?.minuteToATCRate ?? 0.0025;
+const price = settings?.economics?.atcToCedisPrice ?? 0.0025;
+const balanceATC = wallet.balanceATC || 0;
 
-      totalMinutes: wallet.totalMinutes || 0,
-      todayMinutes,
+const balanceCedis = Number((balanceATC * price).toFixed(6));
+const todayATC = Number((todayMinutes * rate).toFixed(6));
+const weeklyATC = weeklyMinutes.map( (m: number) => Number((m * rate).toFixed(6)));
 
-      weeklyMinutes,
-      recentTx,
+res.json({
+  user: {
+    name: user.name || "User",
+    profileImage: user.profileImage || null,
+  },
 
-      trustStatus,
-      trustScore,
+  wallet: {
+    balanceATC,
+    balanceCedis,
+    staked: wallet.stakedATC || 0,
+  },
 
-      emissionMultiplier: emission?.multiplier ?? 1,
-      emissionPhase: emission?.phase ?? 0,
+  earnings: {
+    totalMinutes: wallet.totalMinutes || 0,
+    todayMinutes,
+    todayATC,
+  },
 
-      beta: {
-        active: settings?.beta?.active ?? false,
-        conversionEnabled:
-          settings?.beta?.showConversion ?? false,
-        withdrawalEnabled:
-          settings?.beta?.showWithdrawals ?? false,
-      },
-    });
+  weekly: {
+    minutes: weeklyMinutes,
+    atc: weeklyATC,
+  },
 
+  economics: {
+    rate,
+    price,
+  },
+
+  trust: {
+    score: trustScore,
+    status: trustStatus,
+  },
+
+  recentTx,
+
+  emission: {
+    multiplier: emission?.multiplier ?? 1,
+    phase: emission?.phase ?? 0,
+  },
+
+  beta: {
+    active: settings?.beta?.active ?? false,
+    conversionEnabled: settings?.beta?.showConversion ?? false,
+    withdrawalEnabled: settings?.beta?.showWithdrawals ?? false,
+  },
+});
+    
   } catch (err) {
     console.error("SUMMARY ERROR:", err);
 
