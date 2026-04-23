@@ -8,6 +8,7 @@ import Transaction from "../models/Transaction";
 import Wallet from "../models/Wallet";
 import User from "../models/User";
 import UserTrust from "../models/UserTrust";
+import { updateStreak } from "../utils/streak";
 
 const router = express.Router();
 
@@ -30,6 +31,14 @@ router.get("/", auth, async (req: any, res) => {
         message: "User not found",
       });
     }
+
+    const updatedStreak = await updateStreak(user, todayMinutes);
+
+    // save async (non-blocking)
+    User.updateOne(
+      { _id: userId },
+      { streak: updatedStreak }
+    ).catch(() => {});
 
     /* ================= WALLET SAFE (ATOMIC) ================= */
     const wallet = walletRaw
@@ -139,8 +148,6 @@ if (trustScore < 40) trustStatus = "blocked";
 
     /* ================= RESPONSE ================= */
 
-        /* ================= ECONOMICS ================= */
-
 const rate = settings?.economics?.minuteToATCRate ?? 0.0025;
 const price = settings?.economics?.atcToCedisPrice ?? 0.0025;
 const balanceATC = wallet.balanceATC || 0;
@@ -169,6 +176,11 @@ res.json({
   // ✅ ECONOMICS
   rate,
   price,
+
+  streak: {
+  current: updatedStreak.current,
+  longest: updatedStreak.longest,
+},
 
   // ✅ TRUST
   trustStatus,

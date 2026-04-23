@@ -48,6 +48,13 @@ export interface IUser extends Document {
     promo: boolean;
   };
 
+  streak: {
+    current: Number;
+    longest: Number;
+    lastEarnDate:  Date;
+  };
+
+
   earlyAdopter: boolean;
   pausedUntil?: Date;
 
@@ -88,6 +95,13 @@ const UserSchema = new Schema<IUser>(
 
     hasPin: { type: Boolean, default: false },
     pinUpdatedAt: { type: Date, default: null },
+
+
+    streak: {
+    current: { type: Number, default: 0 },
+    longest: { type: Number, default: 0 },
+    lastEarnDate: { type: Date, default: null },
+  },
 
     /* ================= REFERRAL ================= */
 
@@ -133,6 +147,8 @@ const UserSchema = new Schema<IUser>(
     fullName: { type: String, default: "" },
 
     profileImage: { type: String, default: null },
+
+ 
 
     /* ================= WALLET ================= */
 
@@ -192,6 +208,7 @@ const UserSchema = new Schema<IUser>(
       default: "user",
       index: true,
     },
+    
   },
   {
     timestamps: true,
