@@ -150,8 +150,6 @@ const todayATC = Number((todayMinutes * rate).toFixed(6));
 const weeklyATC = weeklyMinutes.map( (m: number) => Number((m * rate).toFixed(6)));
 
 res.json({
-  
-  res.json({
   name: user.name || "User",
   profileImage: user.profileImage || null,
 
@@ -187,7 +185,6 @@ res.json({
     conversionEnabled: settings?.beta?.showConversion ?? false,
     withdrawalEnabled: settings?.beta?.showWithdrawals ?? false,
   },
-}
 });
     
   } catch (err) {
