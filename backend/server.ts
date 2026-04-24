@@ -18,6 +18,8 @@ import http from "http";
 import path from "path";
 import helmet from "helmet";
 import { Server as IOServer } from "socket.io";
+import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 /* 🔥 LOAD FIREBASE */
 import "./src/config/firebase";
@@ -33,8 +35,23 @@ import { setupSupportSocket } from "./src/sockets/supportSocket";
 import { registerAdminEmitter } from "./src/utils/adminEmitter";
 import { ensurePools } from "./src/utils/initPools";
 
+
+
 /* MIDDLEWARE */
-import { apiLimiter } from "./src/middleware/rateLimiter";
+import {
+  globalLimiter,
+  authLimiter,
+  convertLimiter,
+  earnLimiter,
+  withdrawLimiter,
+  callLimiter,
+  referralsLimiter,
+  adsLimiter,
+  surveysLimiter,
+} from "./src/middleware/rateLimiter";
+
+
+
 
 /* ROUTES */
 // ADMIN
@@ -79,7 +96,7 @@ import pushRoutes from "./src/routes/pushRoutes";
 const app = express();
 
 /* TRUST PROXY */
-app.set("trust proxy", 1);
+app.set("trust proxy", true);
 
 /* ================= SECURITY ================= */
 
@@ -92,17 +109,23 @@ app.use(express.urlencoded({ extended: true }));
 /* ✅ CUSTOM SANITIZER (SAFE) */
  app.use((req: any, _res, next) => {
   const sanitize = (obj: any) => {
-    if (!obj) return;
+  if (!obj) return;
 
-    for (const key in obj) {
+  for (const key in obj) {
 
-      if (key.startsWith("$")) {
-  delete obj[key];
-      } else if (obj[key] && typeof obj[key] === "object") {
-        sanitize(obj[key]);
-      }
+    // 🔥 CRITICAL SECURITY
+    if (key.startsWith("$") || key.includes(".")) {
+      delete obj[key];
+      continue;
     }
-  };
+
+    if (Array.isArray(obj[key])) {
+      obj[key].forEach(sanitize);
+    } else if (obj[key] && typeof obj[key] === "object") {
+      sanitize(obj[key]);
+    }
+  }
+};
 
   sanitize(req.body);
   sanitize(req.params);
@@ -114,7 +137,7 @@ app.use(express.urlencoded({ extended: true }));
 
 /* ================= DEBUG ================= */
 app.use((req, _res, next) => {
-  if (process.env.NODE_ENV !== "production") {
+if (process.env.NODE_ENV === "development") {
   console.log(`📡 ${req.method} ${req.url}`);
 }
   next();
@@ -122,11 +145,13 @@ app.use((req, _res, next) => {
 
 /* ================= TIMEOUT ================= */
 app.use((req, res, next) => {
-  res.setTimeout(10000, () => {
-  if (!res.headersSent) {
-    res.status(503).json({ message: "Request timeout" });
-  }
-});
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(503).json({ message: "Request timeout" });
+    }
+  }, 10000);
+
+  res.on("finish", () => clearTimeout(timeout));
   next();
 });
 
@@ -139,27 +164,22 @@ const allowedOrigins = [
   process.env.ADMIN_URL,
 ].filter(Boolean);
 
-      app.use(
+app.use(
   cors({
-    origin: allowedOrigins.length
-  ? allowedOrigins
-  : ["http://localhost:3000"],
-  credentials: true,
+    origin: (origin, callback) => {
+      if (!origin || process.env.NODE_ENV !== "production") {
+  return callback(null, true);
+}
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
   })
 );
-
-/* ================= RATE LIMIT ================= */
-app.use("/api/auth", apiLimiter);
-app.use("/api/convert", apiLimiter);
-app.use("/api/earn", apiLimiter);
-app.use("/api/withdraw", apiLimiter);
-app.use("/api/call", apiLimiter);
-app.use("/api/referrals", apiLimiter);
-app.use("/api/ads", apiLimiter);
-app.use("/api/surveys", apiLimiter);
-
-/* ================= STATIC ================= */
-app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 /* ================= HEALTH ================= */
 app.get("/", (_req, res) => {
@@ -169,6 +189,21 @@ app.get("/", (_req, res) => {
     time: new Date(),
   });
 });
+
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+app.use(globalLimiter); // light protection
+
+/* ================= RATE LIMIT ================= */
+app.use("/api/auth", authLimiter);
+app.use("/api/convert", convertLimiter);
+app.use("/api/earn", earnLimiter);
+app.use("/api/withdraw", withdrawLimiter);
+app.use("/api/call", callLimiter);
+app.use("/api/referrals", referralsLimiter);
+app.use("/api/ads", adsLimiter);
+app.use("/api/surveys", surveysLimiter);
+
 
 /* ================= ROUTES ================= */
 
@@ -213,8 +248,15 @@ app.use("/postback", postbackRoutes);
 /* ================= ERROR ================= */
 app.use((err: any, req: any, res: any, _next: any) => {
   console.error("❌ ERROR:", err?.message);
-  res.status(500).json({ message: "Internal server error" });
+
+  res.status(500).json({
+    message: "Internal server error",
+    ...(process.env.NODE_ENV !== "production" && {
+      error: err?.message,
+    }),
+  });
 });
+
 
 process.on("unhandledRejection", (err) => {
   console.error("❌ Unhandled Rejection:", err);
@@ -230,19 +272,35 @@ const PORT = Number(process.env.PORT) || 5000;
 const server = http.createServer(app);
 
 /* ================= SOCKET ================= */
+
 const io = new IOServer(server, {
   cors: {
     origin: allowedOrigins.length
       ? allowedOrigins
       : ["http://localhost:3000"],
     credentials: true,
-    methods: ["GET", "POST"],
   },
 });
 
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+
+  if (!token) return next(new Error("Unauthorized"));
+
+try {
+  const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
+  socket.user = decoded;
+  next();
+} catch (err: any) {
+  if (err.name === "TokenExpiredError") {
+  socket.emit("auth_error", "TOKEN_EXPIRED");
+  return next(new Error("Token expired"));
+}
+}
+});
+
+
 app.set("io", io);
-
-
 
 
 setupSocket(io);
@@ -286,8 +344,10 @@ const startServer = async () => {
   }
 };
 
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   console.log("🛑 Server shutting down...");
+
+  await mongoose.connection.close();
   server.close(() => process.exit(0));
 });
 

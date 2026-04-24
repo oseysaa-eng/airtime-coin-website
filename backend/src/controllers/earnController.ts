@@ -2,6 +2,10 @@ import { Request, Response } from "express";
 import Earning from "../models/Earning";
 import User from "../models/User";
 import { pushWalletUpdate } from "../sockets/supportSocket";
+import { checkFraudLimits } from "../utils/fraudGuard";
+
+
+
 
 /**
  * GET all earnings (admin)
@@ -21,6 +25,7 @@ export const getEarnings = async (
     });
   }
 };
+
 
 /**
  * CREATE earning + realtime wallet update
@@ -48,6 +53,14 @@ export const createEarning = async (
       return res
         .status(404)
         .json({ error: "User not found" });
+    }
+
+    const fraudCheck = await checkFraudLimits(userId, minutes);
+
+    if (!fraudCheck.allowed) {
+      return res.status(403).json({
+        message: fraudCheck.reason,
+      });
     }
 
     // ✅ Save earning
