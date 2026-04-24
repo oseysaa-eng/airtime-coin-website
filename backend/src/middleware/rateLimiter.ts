@@ -32,6 +32,8 @@ export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10, // 🔥 stricter
 
+  keyGenerator: (req) => req.ip, // 🔐 IP-based for login attacks
+
   handler: (_req, res) => {
     res.status(429).json({
       message: "Too many login attempts. Try later.",
