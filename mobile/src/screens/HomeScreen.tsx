@@ -257,7 +257,6 @@ const chartData = useMemo(() => ({
 
   };
 
-
     const safePrice = dashboard?.price ?? 0;
     const safeTodayATC = dashboard?.todayATC ?? 0;
     const safeRate = dashboard?.rate ?? 0;
@@ -281,17 +280,23 @@ const chartData = useMemo(() => ({
       
     <View style={[s.card, s.streakGlow]}>
   <Text style={s.cardTitle}>🔥 Streak</Text>
-
   
 
   <Text style={[s.balance, { color: "#f59e0b" }]}>
-    {streakDays} days
+    {streakDays} day{streakDays !== 1 ? "s" : ""}
   </Text>
+
+
+<Text style={s.hint}>
+  Best: {dashboard?.streak?.longest || 0} days
+</Text>
 
   <Text style={s.hint}>
     Keep earning daily to grow your streak
   </Text>
 </View>
+
+
 
 
       {/* BETA */}

@@ -9,6 +9,7 @@ import Wallet from "../models/Wallet";
 import User from "../models/User";
 import UserTrust from "../models/UserTrust";
 import { updateStreak } from "../utils/streak";
+import { processStreakRewards } from "../utils/streakReward";
 
 const router = express.Router();
 
@@ -131,12 +132,15 @@ const weeklyMinutes = [
       .lean();
 
 
-  const updatedStreak = await updateStreak(user, todayMinutes);
+    const updatedStreak = await updateStreak(user, todayMinutes);
 
-    // save async (non-blocking)
+    // 🔥 PROCESS REWARD
+    const finalStreak = await processStreakRewards(userId, updatedStreak);
+
+    // 💾 SAVE STREAK
     User.updateOne(
       { _id: userId },
-      { streak: updatedStreak }
+      { streak: finalStreak }
     ).catch(() => {});
 
     /* ================= TRUST ================= */
@@ -179,9 +183,9 @@ res.json({
   rate,
   price,
 
-  streak: {
-  current: updatedStreak.current,
-  longest: updatedStreak.longest,
+streak: {
+  current: finalStreak.current,
+  longest: finalStreak.longest,
 },
 
   // ✅ TRUST

@@ -52,6 +52,7 @@ export interface IUser extends Document {
     current: Number;
     longest: Number;
     lastEarnDate:  Date;
+    rewardsClaimed: Number;
   };
 
 
@@ -101,6 +102,7 @@ const UserSchema = new Schema<IUser>(
     current: { type: Number, default: 0 },
     longest: { type: Number, default: 0 },
     lastEarnDate: { type: Date, default: null },
+    rewardsClaimed: [{ type: Number }],
   },
 
     /* ================= REFERRAL ================= */
@@ -147,9 +149,6 @@ const UserSchema = new Schema<IUser>(
     fullName: { type: String, default: "" },
 
     profileImage: { type: String, default: null },
-
- 
-
     /* ================= WALLET ================= */
 
     balance: { type: Number, default: 0, min: 0 },
