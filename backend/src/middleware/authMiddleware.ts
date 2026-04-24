@@ -10,25 +10,27 @@ export default async function authMiddleware(
   const authHeader = req.headers.authorization;
 
   if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "No token provided" });
+    return res.status(401).json({ message: "NO_TOKEN" });
   }
 
   try {
     const token = authHeader.split(" ")[1];
+
     const decoded: any = jwt.verify(
       token,
       process.env.JWT_SECRET as string
     );
 
     const user = await User.findById(decoded.id);
+
     if (!user) {
-      return res.status(401).json({ message: "User not found" });
+      return res.status(401).json({ message: "USER_NOT_FOUND" });
     }
 
-    // 🚫 PAUSE ENFORCEMENT
+    // 🚫 PAUSE CHECK
     if (user.pausedUntil && user.pausedUntil > new Date()) {
       return res.status(403).json({
-        message: "Account temporarily paused",
+        message: "ACCOUNT_PAUSED",
         pausedUntil: user.pausedUntil,
         reason: user.pauseReason,
       });
@@ -36,8 +38,20 @@ export default async function authMiddleware(
 
     req.user = { id: user._id };
     next();
-  } catch (err) {
+
+  } catch (err: any) {
+
+    // ✅ KEY FIX
+    if (err.name === "TokenExpiredError") {
+      return res.status(401).json({
+        message: "TOKEN_EXPIRED",
+      });
+    }
+
     console.error("JWT VERIFY FAILED:", err);
-    return res.status(401).json({ message: "Invalid token" });
+
+    return res.status(401).json({
+      message: "INVALID_TOKEN",
+    });
   }
 }

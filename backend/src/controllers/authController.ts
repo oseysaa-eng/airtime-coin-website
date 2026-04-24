@@ -13,7 +13,7 @@ if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
-const ACCESS_EXPIRES = "1d";
+const ACCESS_EXPIRES = "15m";
 const REFRESH_EXPIRES = "30d";
 
 /* =============================
@@ -95,7 +95,7 @@ export const registerUser = async (req: Request, res: Response) => {
     const { accessToken, refreshToken } = generateTokens(user);
 
     // ✅ SAVE REFRESH TOKEN (multi-device)
-    user.refreshTokens = [refreshToken];
+    user.refreshTokens = [...(user.refreshTokens || []), refreshToken];
     await user.save();
 
     return res.status(201).json({
@@ -159,7 +159,10 @@ export const loginUser = async (req: Request, res: Response) => {
 user.lastUserAgent = req.headers["user-agent"];
 
     // ✅ ADD refresh token (multi-device)
-    user.refreshTokens.push(refreshToken);
+    user.refreshTokens = [
+  ...(user.refreshTokens || []).slice(-4),
+  refreshToken,
+];
 
     await user.save();
 
@@ -190,32 +193,38 @@ export const refreshAuthToken = async (req: Request, res: Response) => {
     const refresh = req.body.refreshToken;
 
     if (!refresh) {
-      return res.status(401).json({ message: "No refresh token" });
+      return res.status(401).json({ message: "NO_REFRESH_TOKEN" });
     }
 
-    const decoded: any = jwt.verify(refresh, JWT_REFRESH_SECRET!);
+    let decoded: any;
+
+    try {
+      decoded = jwt.verify(refresh, JWT_REFRESH_SECRET!);
+    } catch (err: any) {
+      if (err.name === "TokenExpiredError") {
+        return res.status(401).json({ message: "REFRESH_EXPIRED" });
+      }
+      return res.status(401).json({ message: "INVALID_REFRESH" });
+    }
 
     const user = await User.findById(decoded.id).select("+refreshTokens");
 
     if (!user) {
-      return res.status(401).json({ message: "User not found" });
+      return res.status(401).json({ message: "USER_NOT_FOUND" });
     }
 
-    // ✅ VERIFY TOKEN EXISTS IN DB
+    // ✅ ensure token exists
     if (!user.refreshTokens.includes(refresh)) {
-      return res.status(403).json({ message: "Invalid session" });
+      return res.status(403).json({ message: "SESSION_INVALID" });
     }
 
-    // 🔁 ROTATE TOKENS
-
+    // 🔁 rotate tokens
     const { accessToken, refreshToken: newRefresh } = generateTokens(user);
 
-    // replace old token
-    user.refreshTokens = user.refreshTokens.filter((t) => t !== refresh);
     user.refreshTokens = [
-  ...user.refreshTokens.slice(-4), // keep last 4
-  refreshAuthToken,
-];
+      ...user.refreshTokens.filter((t) => t !== refresh).slice(-4),
+      newRefresh,
+    ];
 
     await user.save();
 
@@ -225,8 +234,9 @@ export const refreshAuthToken = async (req: Request, res: Response) => {
     });
 
   } catch (err) {
-    return res.status(401).json({
-      message: "Invalid refresh token",
+    console.error("REFRESH ERROR:", err);
+    return res.status(500).json({
+      message: "REFRESH_FAILED",
     });
   }
 };
@@ -235,7 +245,6 @@ export const refreshAuthToken = async (req: Request, res: Response) => {
 /* =============================
    LOGOUT 
 ============================= */
-
 export const logoutUser = async (req: any, res: Response) => {
   try {
     const refresh = req.body.refreshToken;
