@@ -56,6 +56,8 @@ type Tx = {
 
 
 
+
+
 const defaultChart = [0, 0, 0, 0, 0, 0, 0];
 
 export default function HomeScreen() {
