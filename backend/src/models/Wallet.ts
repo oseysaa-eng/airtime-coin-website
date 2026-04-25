@@ -38,12 +38,23 @@ const WalletSchema = new mongoose.Schema(
   lastHourMinutes: { type: Number, default: 0 },
   lastHourReset: { type: Date, default: Date.now },
 
+  dailySourceMinutes: {
+    ADS: { type: Number, default: 0 },
+    CALL: { type: Number, default: 0 },
+    SURVEY: { type: Number, default: 0 },
+    DAILY_BONUS: { type: Number, default: 0 },
+    REFERRAL: { type: Number, default: 0 },
+  },
+
   /* ================= SYSTEM ================= */
   version: { type: Number, default: 1 }, // future migrations
 
 },
 { timestamps: true }
 );
+
+
+
 
 /* ================= INDEXES ================= */
 

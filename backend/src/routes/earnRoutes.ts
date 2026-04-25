@@ -8,7 +8,6 @@ import UserTrust from "../models/UserTrust";
 import { rewardEngine } from "../services/rewardEngine";
 import { earnLimiter } from "../middleware/rateLimiter";
 
-
 const router = express.Router();
 
 /* ✅ DATE HELPER */
@@ -17,7 +16,6 @@ export const getToday = () => {
   d.setHours(0, 0, 0, 0);
   return d;
 };
-
 
 router.post("/", auth, earnLimiter, async (req: any, res) => {
   try {
@@ -90,34 +88,35 @@ router.post("/", auth, earnLimiter, async (req: any, res) => {
 
     const MINUTES = Math.floor(baseMinutes * multiplier);
 
-    /* ================= FRAUD ================= */
-    const fraud = await checkFraudLimits(userId, MINUTES);
-    if (!fraud.allowed) {
-      return res.status(403).json({ message: fraud.reason });
-    }
-
     /* ================= REWARD ENGINE ================= */
-    await rewardEngine({
+    const result = await rewardEngine({
       userId,
       minutes: MINUTES,
       source: "DAILY_BONUS",
     });
 
+    /* 🔥 HANDLE EDGE CASE (CAP HIT) */
+    if (result.creditedMinutes === 0) {
+      return res.status(403).json({
+        message: "Daily earning limit reached",
+      });
+    }
+
     await UserDailyStats.updateOne(
       { userId, date: today },
-      { $inc: { minutesEarned: MINUTES } }
+      { $inc: { minutesEarned: result.creditedMinutes } }
     );
 
     return res.json({
       success: true,
-      earnedMinutes: MINUTES,
+      earnedMinutes: result.creditedMinutes,
     });
 
-  } catch (err) {
+  } catch (err: any) {
     console.error("DAILY BONUS ERROR:", err);
 
     res.status(500).json({
-      message: "Failed to claim daily bonus",
+      message: err.message || "Failed to claim daily bonus",
     });
   }
 });
