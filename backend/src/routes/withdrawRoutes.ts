@@ -1,55 +1,83 @@
 import express from "express";
-import { getWithdrawHistory, requestWithdraw } from "../controllers/withdrawController";
-import authMiddleware from "../middleware/authMiddleware";
-import requireKYC from "../middleware/requireKYC";
-import SystemSettings from "../models/SystemSettings";
+
+import auth from "../middleware/authMiddleware";
+import withdrawGuard from "../middleware/withdrawGuard";
+import { withdrawLimiter } from "../middleware/rateLimiter";
+
+import { processWithdrawal } from "../services/withdrawService";
+import Transaction from "../models/Transaction";
 
 const router = express.Router();
 
-/**
- * POST /api/withdraw/request
- */
+/* ============================================
+   💸 CREATE WITHDRAWAL (MAIN ENTRY)
+============================================ */
 router.post(
-  "/request",
-  authMiddleware,
-  requireKYC,
-  async (req, res, next) => {
+  "/",
+  auth,
+  withdrawLimiter,
+  withdrawGuard,
+  async (req: any, res) => {
     try {
-      const settings = await SystemSettings.findOne();
+      const userId = req.user.id;
+      const { amount } = req.body;
 
-      if (settings?.beta?.active && !settings.beta.showWithdrawals) {
-        return res.status(403).json({
-          message: "Withdrawals are disabled during beta",
+      if (!amount || amount <= 0) {
+        return res.status(400).json({
+          message: "Invalid amount",
         });
       }
 
-      return requestWithdraw(req, res);
-    } catch (err) {
-      next(err);
+      const result = await processWithdrawal({
+        userId,
+        amount,
+      });
+
+      return res.json({
+        success: true,
+        ...result,
+      });
+
+    } catch (err: any) {
+      console.error("WITHDRAW ERROR:", err);
+
+      return res.status(400).json({
+        message: err.message || "Withdrawal failed",
+      });
     }
   }
 );
 
-/**
- * GET /api/withdraw/history
- */
+/* ============================================
+   📜 WITHDRAW HISTORY
+============================================ */
 router.get(
   "/history",
-  authMiddleware,
-  requireKYC,
-  async (req, res, next) => {
+  auth,
+  withdrawGuard,
+  async (req: any, res) => {
     try {
-      const settings = await SystemSettings.findOne();
+      const userId = req.user.id;
 
-      if (settings?.beta?.active && !settings.beta.showWithdrawals) {
-        return res.status(403).json({
-          message: "Withdrawals are disabled during beta",
-        });
-      }
+      const history = await Transaction.find({
+        userId,
+        type: "WITHDRAW",
+      })
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean();
 
-      return getWithdrawHistory(req, res);
+      return res.json({
+        success: true,
+        history,
+      });
+
     } catch (err) {
-      next(err);
+      console.error("WITHDRAW HISTORY ERROR:", err);
+
+      return res.status(500).json({
+        message: "Failed to load history",
+      });
     }
   }
 );
