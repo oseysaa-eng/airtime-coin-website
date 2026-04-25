@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import User from "../models/User";
 import UserTrust from "../models/UserTrust";
 import SystemSettings from "../models/SystemSettings";
-import KYC from "../models/KYC";
+import KYC from "../models/Kyc";
 
 export default async function withdrawGuard(
   req: any,
