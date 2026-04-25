@@ -4,7 +4,11 @@ import rateLimit from "express-rate-limit";
    HELPER: IDENTIFY USER
 ============================= */
 const getKey = (req: any) => {
-  return req.user?.id || req.ip; // 🔥 user-based if logged in
+  // 🔥 prefer user ID
+  if (req.user?.id) return req.user.id;
+
+  // 🔐 fallback to IP (safe now)
+  return req.ip;
 };
 
 /* =============================

@@ -96,7 +96,7 @@ import pushRoutes from "./src/routes/pushRoutes";
 const app = express();
 
 /* TRUST PROXY */
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
 
 /* ================= SECURITY ================= */
 
