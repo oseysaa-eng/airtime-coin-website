@@ -5,6 +5,10 @@ import auth from "../middleware/authMiddleware";
 import CallSession from "../models/CallSession";
 import SpamNumber from "../models/SpamNumber";
 
+import { applyTrustPenalty } from "../services/trustEngine";
+import { detectSuspiciousCall } from "../utils/fraudSignals";
+import { callLimiter } from "../middleware/rateLimiter";
+
 const router = express.Router();
 
 /* ============================================
@@ -22,9 +26,9 @@ const normalizeNumber = (num: string) => {
 };
 
 /* ============================================
-   🚫 REPORT SPAM (SAFE + ATOMIC)
+   🚫 REPORT SPAM (SAFE + HARDENED)
 ============================================ */
-router.post("/report", auth, async (req: any, res) => {
+router.post("/report", auth, callLimiter, async (req: any, res) => {
   try {
     const userId = req.user.id;
     let { number } = req.body;
@@ -35,13 +39,18 @@ router.post("/report", auth, async (req: any, res) => {
 
     number = normalizeNumber(number);
 
-    /* 🔥 ATOMIC UPDATE (prevents duplicates) */
+    const existing = await SpamNumber.findOne({ number });
+
+    if (existing?.reportedBy.includes(userId)) {
+      return res.json({
+        success: false,
+        message: "Already reported",
+      });
+    }
+
+    /* 🔥 SAFE UPDATE */
     const result = await SpamNumber.findOneAndUpdate(
-      {
-        number,
-        reportedBy: { $ne: userId }, // ❗ prevent duplicate report
-        reports: { $lt: 50 },        // ❗ cap abuse
-      },
+      { number },
       {
         $inc: { reports: 1 },
         $addToSet: { reportedBy: userId },
@@ -53,10 +62,12 @@ router.post("/report", auth, async (req: any, res) => {
       }
     );
 
-    if (!result) {
-      return res.json({
-        success: false,
-        message: "Already reported or limit reached",
+    /* 🚨 FRAUD: TOO MANY REPORTS */
+    if (result.reports > 20) {
+      await applyTrustPenalty({
+        userId,
+        type: "SPAM_REPORT_ABUSE",
+        meta: { number },
       });
     }
 
@@ -100,7 +111,7 @@ router.post("/auto-credit", auth, async (req: any, res) => {
 });
 
 /* ============================================
-   📊 WEEKLY CALL DATA (IMPROVED)
+   📊 WEEKLY CALL DATA
 ============================================ */
 router.get("/weekly", auth, async (req: any, res) => {
   try {
@@ -120,9 +131,7 @@ router.get("/weekly", auth, async (req: any, res) => {
       },
       {
         $group: {
-          _id: {
-            $isoDayOfWeek: "$createdAt", // ✅ better (Mon=1)
-          },
+          _id: { $isoDayOfWeek: "$createdAt" },
           minutes: { $sum: "$creditedMinutes" },
         },
       },
@@ -138,15 +147,7 @@ router.get("/weekly", auth, async (req: any, res) => {
 
     return res.json({
       success: true,
-      weeklyMinutes: [
-        weekMap[1],
-        weekMap[2],
-        weekMap[3],
-        weekMap[4],
-        weekMap[5],
-        weekMap[6],
-        weekMap[7],
-      ],
+      weeklyMinutes: Object.values(weekMap),
     });
 
   } catch (err) {
@@ -156,9 +157,9 @@ router.get("/weekly", auth, async (req: any, res) => {
 });
 
 /* ============================================
-   🔍 CHECK NUMBER (OPTIMIZED)
+   🔍 CHECK NUMBER (PROTECTED)
 ============================================ */
-router.post("/check-number", async (req, res) => {
+router.post("/check-number", callLimiter, async (req, res) => {
   try {
     let { number } = req.body;
 
