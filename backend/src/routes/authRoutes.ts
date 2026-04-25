@@ -9,17 +9,17 @@ import {
 
 import authMiddleware from "../middleware/authMiddleware";
 import { trackDevice } from "../middleware/trackDevice";
-
+import { authLimiter } from "../middleware/rateLimiter";
 
 
 
 const router = express.Router();
 
 /* AUTH */
-router.post("/register", trackDevice, registerUser);
-router.post("/login", trackDevice, loginUser);
-router.post("/refresh", refreshAuthToken);
-router.post("/logout", authMiddleware, logoutUser);
+router.post("/register", authLimiter, trackDevice, registerUser);
+router.post("/login", authLimiter, trackDevice, loginUser);
+router.post("/refresh", authLimiter, refreshAuthToken);
+router.post("/logout", authLimiter, authMiddleware, logoutUser);
 
 /* USER */
 router.get("/me", authMiddleware, getMe);

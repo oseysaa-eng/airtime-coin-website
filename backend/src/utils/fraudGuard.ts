@@ -1,13 +1,35 @@
-// middleware/fraudGuard.ts
-import geoip from "geoip-lite";
+import Wallet from "../models/Wallet";
 
-export default function fraudGuard(req, res, next) {
-  const ip = req.ip;
-  const geo = geoip.lookup(ip);
+const MAX_MINUTES_PER_DAY = 500;     // 🔥 adjust later
+const MAX_MINUTES_PER_HOUR = 120;    // 🔥 anti-bot
 
-  if (!geo || geo.country !== "GH") {
-    return res.status(403).json({ message: "Region restricted" });
+export const checkFraudLimits = async (
+  userId: string,
+  minutesToAdd: number
+) => {
+  const wallet = await Wallet.findOne({ userId });
+
+  if (!wallet) return { allowed: false, reason: "NO_WALLET" };
+
+  const today = wallet.todayMinutes || 0;
+
+  // ❌ daily cap
+  if (today + minutesToAdd > MAX_MINUTES_PER_DAY) {
+    return {
+      allowed: false,
+      reason: "DAILY_LIMIT",
+    };
   }
 
-  next();
-}
+  // ⏱ hourly check (simple version)
+  const lastHourMinutes = wallet.lastHourMinutes || 0;
+
+  if (lastHourMinutes + minutesToAdd > MAX_MINUTES_PER_HOUR) {
+    return {
+      allowed: false,
+      reason: "HOURLY_LIMIT",
+    };
+  }
+
+  return { allowed: true };
+};

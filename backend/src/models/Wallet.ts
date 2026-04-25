@@ -35,6 +35,9 @@ const WalletSchema = new mongoose.Schema(
   lastEarningAt: { type: Date, default: null },
   earningVelocity: { type: Number, default: 0 }, // mins per hour
 
+  lastHourMinutes: { type: Number, default: 0 },
+  lastHourReset: { type: Date, default: Date.now },
+
   /* ================= SYSTEM ================= */
   version: { type: Number, default: 1 }, // future migrations
 

@@ -1,14 +1,14 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 
 /* =============================
    HELPER: IDENTIFY USER
 ============================= */
 const getKey = (req: any) => {
-  // 🔥 prefer user ID
-  if (req.user?.id) return req.user.id;
+  if (req.user?.id) {
+    return `user:${req.user.id}`; // 🔥 strongest protection
+  }
 
-  // 🔐 fallback to IP (safe now)
-  return req.ip;
+  return ipKeyGenerator(req); // ✅ IPv6-safe fallback
 };
 
 /* =============================
@@ -19,14 +19,7 @@ export const globalLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-
   keyGenerator: getKey,
-
-  handler: (_req, res) => {
-    res.status(429).json({
-      message: "Too many requests. Slow down.",
-    });
-  },
 });
 
 /* =============================
@@ -34,9 +27,10 @@ export const globalLimiter = rateLimit({
 ============================= */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10, // 🔥 stricter
+  max: 10,
 
-  keyGenerator: (req) => req.ip, // 🔐 IP-based for login attacks
+  // 🔥 FIXED (was req.ip)
+  keyGenerator: (req) => ipKeyGenerator(req),
 
   handler: (_req, res) => {
     res.status(429).json({
@@ -49,16 +43,9 @@ export const authLimiter = rateLimit({
    EARN LIMIT (ANTI-BOT CORE)
 ============================= */
 export const earnLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 min
-  max: 10, // 🔥 reduce from 30 → 10
-
+  windowMs: 60 * 1000,
+  max: 10,
   keyGenerator: getKey,
-
-  handler: (_req, res) => {
-    res.status(429).json({
-      message: "Too many earning requests. Slow down.",
-    });
-  },
 });
 
 /* =============================
@@ -67,46 +54,25 @@ export const earnLimiter = rateLimit({
 export const convertLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
-
   keyGenerator: getKey,
-
-  handler: (_req, res) => {
-    res.status(429).json({
-      message: "Too many conversions. Try again shortly.",
-    });
-  },
 });
 
 /* =============================
    WITHDRAW LIMIT (CRITICAL)
 ============================= */
 export const withdrawLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
+  windowMs: 60 * 60 * 1000,
   max: 3,
-
   keyGenerator: getKey,
-
-  handler: (_req, res) => {
-    res.status(429).json({
-      message: "Too many withdrawal attempts.",
-    });
-  },
 });
 
 /* =============================
-   ADS LIMIT (STRICT)
+   ADS LIMIT
 ============================= */
 export const adsLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
-
   keyGenerator: getKey,
-
-  handler: (_req, res) => {
-    res.status(429).json({
-      message: "Ad request limit reached.",
-    });
-  },
 });
 
 /* =============================
@@ -115,44 +81,23 @@ export const adsLimiter = rateLimit({
 export const surveysLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
-
   keyGenerator: getKey,
-
-  handler: (_req, res) => {
-    res.status(429).json({
-      message: "Survey request limit reached.",
-    });
-  },
 });
 
 /* =============================
-   REFERRAL LIMIT (ANTI-SPAM)
+   REFERRAL LIMIT
 ============================= */
 export const referralsLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
-
   keyGenerator: getKey,
-
-  handler: (_req, res) => {
-    res.status(429).json({
-      message: "Too many referral actions.",
-    });
-  },
 });
 
 /* =============================
-   CALL LIMIT (HIGH RISK)
+   CALL LIMIT
 ============================= */
 export const callLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
-
   keyGenerator: getKey,
-
-  handler: (_req, res) => {
-    res.status(429).json({
-      message: "Call earning limit reached.",
-    });
-  },
 });
