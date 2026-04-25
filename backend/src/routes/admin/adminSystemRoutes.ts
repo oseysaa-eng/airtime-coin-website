@@ -30,19 +30,23 @@ router.get("/", adminAuth, async (_req, res) => {
   since.setDate(since.getDate() - 30);
 
   const burnAgg = await Transaction.aggregate([
-    {
-      $match: {
-        type: "EARN",
-        createdAt: { $gte: since },
-      },
+
+{
+  $group: {
+    _id: {
+      source: "$source",
+      day: { $dayOfYear: "$createdAt" },
     },
-    {
-      $group: {
-        _id: "$source",
-        avgDaily: { $avg: "$amount" },
-        total: { $sum: "$amount" },
-      },
-    },
+    dailyTotal: { $sum: "$amount" },
+  },
+},
+{
+  $group: {
+    _id: "$_id.source",
+    avgDaily: { $avg: "$dailyTotal" },
+    total: { $sum: "$dailyTotal" },
+  },
+},
   ]);
 
   const burn = burnAgg.map(b => {
@@ -121,33 +125,48 @@ router.get("/", adminAuth, async (_req, res) => {
    POST /api/admin/system/emergency
 ===================================================== */
 router.post("/emergency", adminAuth, async (req, res) => {
-  const { active, message } = req.body;
+  try {
+    const { active, message } = req.body;
 
-  const settings =
-    (await SystemSettings.findOne()) ||
-    (await SystemSettings.create({}));
+    const settings =
+      (await SystemSettings.findOne()) ||
+      (await SystemSettings.create({}));
 
-  settings.incidentMode = {
-    active: Boolean(active),
-    message: message || "",
-    activatedAt: active ? new Date() : null,
-    activatedBy: active ? req.admin._id : null,
-  };
+    settings.incidentMode = {
+      active: Boolean(active),
+      message: message || "",
+      activatedAt: active ? new Date() : null,
+      activatedBy: active ? req.admin._id : null,
+    };
 
-  await settings.save();
+    /* 🔥 HARD SYSTEM LOCK */
+    if (active) {
+      settings.beta.showWithdrawals = false;
+      settings.beta.showConversion = false;
 
-  await AdminAuditLog.create({
-    adminId: req.admin._id,
-    action: active
-      ? "INCIDENT_MODE_ON"
-      : "INCIDENT_MODE_OFF",
-    meta: { message },
-  });
+      await RewardPool.updateMany({}, { paused: true });
+      await ConversionPool.updateOne({}, { paused: true });
+    }
 
-  res.json({
-    success: true,
-    incidentMode: settings.incidentMode,
-  });
+    await settings.save();
+
+    await AdminAuditLog.create({
+      adminId: req.admin._id,
+      action: active
+        ? "INCIDENT_MODE_ON"
+        : "INCIDENT_MODE_OFF",
+      meta: { message },
+    });
+
+    res.json({
+      success: true,
+      incidentMode: settings.incidentMode,
+    });
+
+  } catch (err) {
+    console.error("EMERGENCY ERROR:", err);
+    res.status(500).json({ message: "Failed to toggle emergency mode" });
+  }
 });
 
 /* =====================================================
@@ -155,21 +174,36 @@ router.post("/emergency", adminAuth, async (req, res) => {
    POST /api/admin/system/toggles
 ===================================================== */
 router.post("/toggles", adminAuth, async (req, res) => {
-  const settings =
-    (await SystemSettings.findOne()) ||
-    (await SystemSettings.create({}));
+  try {
+    const settings =
+      (await SystemSettings.findOne()) ||
+      (await SystemSettings.create({}));
 
-  Object.assign(settings, req.body);
+    const allowedFields = [
+      "rewardsPaused",
+      "conversionPaused",
+      "withdrawalsPaused",
+    ];
 
-  await settings.save();
+    for (const key of allowedFields) {
+      if (typeof req.body[key] === "boolean") {
+        (settings as any)[key] = req.body[key];
+      }
+    }
 
-  await AdminAuditLog.create({
-    adminId: req.admin._id,
-    action: "SYSTEM_TOGGLES_UPDATED",
-    meta: req.body,
-  });
+    await settings.save();
 
-  res.json({ success: true, settings });
+    await AdminAuditLog.create({
+      adminId: req.admin._id,
+      action: "SYSTEM_TOGGLES_UPDATED",
+      meta: req.body,
+    });
+
+    res.json({ success: true, settings });
+  } catch (err) {
+    console.error("TOGGLES ERROR:", err);
+    res.status(500).json({ message: "Failed to update toggles" });
+  }
 });
 
 /* =====================================================
@@ -213,31 +247,50 @@ router.post("/utility-fees", adminAuth, async (req, res) => {
    POST /api/admin/system/beta
 ===================================================== */
 router.post("/beta", adminAuth, async (req, res) => {
-  const { active, maxUsers, showConversion, showWithdrawals } = req.body;
+  try {
+    const {
+      active,
+      maxUsers,
+      showConversion,
+      showWithdrawals,
+    } = req.body;
 
-  const settings =
-    (await SystemSettings.findOne()) ||
-    (await SystemSettings.create({}));
+    const settings =
+      (await SystemSettings.findOne()) ||
+      (await SystemSettings.create({}));
 
-  settings.beta = {
-    active: Boolean(active),
-    maxUsers: Number(maxUsers || 0),
-    showConversion: Boolean(showConversion),
-    showWithdrawals: Boolean(showWithdrawals),
-  };
+    /* ✅ SAFE UPDATE */
+    if (typeof active === "boolean") settings.beta.active = active;
 
-  await settings.save();
+    if (typeof maxUsers === "number" && maxUsers >= 0) {
+      settings.beta.maxUsers = maxUsers;
+    }
 
-  await AdminAuditLog.create({
-    adminId: req.admin._id,
-    action: "BETA_SETTINGS_UPDATED",
-    meta: settings.beta,
-  });
+    if (typeof showConversion === "boolean") {
+      settings.beta.showConversion = showConversion;
+    }
 
-  res.json({
-    success: true,
-    beta: settings.beta,
-  });
+    if (typeof showWithdrawals === "boolean") {
+      settings.beta.showWithdrawals = showWithdrawals;
+    }
+
+    await settings.save();
+
+    await AdminAuditLog.create({
+      adminId: req.admin._id,
+      action: "BETA_SETTINGS_UPDATED",
+      meta: settings.beta,
+    });
+
+    res.json({
+      success: true,
+      beta: settings.beta,
+    });
+
+  } catch (err) {
+    console.error("BETA UPDATE ERROR:", err);
+    res.status(500).json({ message: "Failed to update beta settings" });
+  }
 });
 
 export default router;

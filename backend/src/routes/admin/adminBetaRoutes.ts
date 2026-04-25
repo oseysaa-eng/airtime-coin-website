@@ -5,33 +5,62 @@ import SystemSettings from "../../models/SystemSettings";
 
 const router = express.Router();
 
+/* ================= SAFE FETCH ================= */
+const getSettings = async () => {
+  let settings = await SystemSettings.findOne();
+
+  if (!settings) {
+    settings = await SystemSettings.create({
+      beta: {
+        active: false,
+        showConversion: false,
+        showWithdrawals: false,
+        showAds: false,
+      },
+      incidentMode: {
+        active: false,
+        message: "",
+      },
+    });
+  }
+
+  // 🔥 ensure structure always exists
+  settings.beta = settings.beta || {
+    active: false,
+    showConversion: false,
+    showWithdrawals: false,
+    showAds: false,
+  };
+
+  settings.incidentMode = settings.incidentMode || {
+    active: false,
+    message: "",
+  };
+
+  return settings;
+};
+
 /* =====================================================
    🧪 GET BETA SETTINGS
-   GET /api/admin/beta
 ===================================================== */
 router.get("/", adminAuth, async (_req: Request, res: Response) => {
   try {
-    const settings =
-      (await SystemSettings.findOne()) ||
-      (await SystemSettings.create({}));
+    const settings = await getSettings();
 
     res.json({
       success: true,
       beta: settings.beta,
       incidentMode: settings.incidentMode,
-      isPublic: !settings.beta?.active, // ✅ added clarity
+      isPublic: !settings.beta.active,
     });
   } catch (err) {
     console.error("BETA FETCH ERROR:", err);
-    res.status(500).json({
-      message: "Failed to load beta settings",
-    });
+    res.status(500).json({ message: "Failed to load settings" });
   }
 });
 
 /* =====================================================
    🧪 UPDATE BETA SETTINGS
-   POST /api/admin/beta
 ===================================================== */
 router.post("/", adminAuth, async (req: any, res: Response) => {
   try {
@@ -45,9 +74,7 @@ router.post("/", adminAuth, async (req: any, res: Response) => {
       dailyMinutesCap,
     } = req.body;
 
-    const settings =
-      (await SystemSettings.findOne()) ||
-      (await SystemSettings.create({}));
+    const settings = await getSettings();
 
     /* 🛡 VALIDATION */
     if (
@@ -56,7 +83,7 @@ router.post("/", adminAuth, async (req: any, res: Response) => {
       (dailyMinutesCap !== undefined && dailyMinutesCap < 0)
     ) {
       return res.status(400).json({
-        message: "Invalid beta configuration values",
+        message: "Invalid configuration values",
       });
     }
 
@@ -74,7 +101,7 @@ router.post("/", adminAuth, async (req: any, res: Response) => {
     if (typeof dailyMinutesCap === "number")
       settings.beta.dailyMinutesCap = dailyMinutesCap;
 
-    /* 🔒 Safety rule */
+    /* 🔒 HARD SAFETY */
     if (!settings.beta.active) {
       settings.beta.showConversion = false;
       settings.beta.showWithdrawals = false;
@@ -83,7 +110,7 @@ router.post("/", adminAuth, async (req: any, res: Response) => {
 
     await settings.save();
 
-    /* 🧾 Audit Log */
+    /* 🧾 AUDIT */
     await AdminAuditLog.create({
       adminId: req.admin._id,
       action: "BETA_SETTINGS_UPDATED",
@@ -95,32 +122,28 @@ router.post("/", adminAuth, async (req: any, res: Response) => {
       beta: settings.beta,
       isPublic: !settings.beta.active,
     });
+
   } catch (err) {
     console.error("BETA UPDATE ERROR:", err);
-    res.status(500).json({
-      message: "Failed to update beta settings",
-    });
+    res.status(500).json({ message: "Failed to update settings" });
   }
 });
 
 /* =====================================================
    🚨 EMERGENCY MODE
-   POST /api/admin/beta/emergency
 ===================================================== */
 router.post("/emergency", adminAuth, async (req: any, res: Response) => {
   try {
     const { active, message } = req.body;
 
-    const settings =
-      (await SystemSettings.findOne()) ||
-      (await SystemSettings.create({}));
+    const settings = await getSettings();
 
     settings.incidentMode.active = Boolean(active);
     settings.incidentMode.message = message || "";
     settings.incidentMode.activatedAt = active ? new Date() : null;
     settings.incidentMode.activatedBy = active ? req.admin._id : null;
 
-    /* 🔥 HARD SAFETY LOCK */
+    /* 🔥 GLOBAL LOCK */
     if (active) {
       settings.beta.showConversion = false;
       settings.beta.showWithdrawals = false;
@@ -129,12 +152,9 @@ router.post("/emergency", adminAuth, async (req: any, res: Response) => {
 
     await settings.save();
 
-    /* 🧾 Audit Log */
     await AdminAuditLog.create({
       adminId: req.admin._id,
-      action: active
-        ? "INCIDENT_MODE_ON"
-        : "INCIDENT_MODE_OFF",
+      action: active ? "INCIDENT_MODE_ON" : "INCIDENT_MODE_OFF",
       meta: { message },
     });
 
@@ -142,11 +162,10 @@ router.post("/emergency", adminAuth, async (req: any, res: Response) => {
       success: true,
       incidentMode: settings.incidentMode,
     });
+
   } catch (err) {
     console.error("EMERGENCY ERROR:", err);
-    res.status(500).json({
-      message: "Failed to toggle emergency mode",
-    });
+    res.status(500).json({ message: "Failed to toggle emergency mode" });
   }
 });
 

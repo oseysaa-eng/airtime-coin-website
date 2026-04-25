@@ -4,9 +4,13 @@ import { useState } from "react";
 import adminApi from "@/lib/adminApi";
 
 type BetaSettings = {
-  enabled: boolean;
-  allowNewUsers: boolean;
-  allowWithdrawals: boolean;
+  active: boolean;
+  showWithdrawals: boolean;
+  showConversion: boolean;
+  showAds: boolean;
+  maxUsers?: number;
+  dailyAdLimit?: number;
+  dailyMinutesCap?: number;
 };
 
 type Props = {
@@ -21,7 +25,7 @@ export default function BetaControls({ beta }: Props) {
     try {
       setSaving(true);
 
-      await adminApi.put("/system/beta", data);
+      await adminApi.post("/admin/beta", data);
 
       alert("Beta settings updated");
     } catch (err) {
@@ -35,52 +39,87 @@ export default function BetaControls({ beta }: Props) {
   return (
     <div className="space-y-4">
 
-      {/* ENABLE BETA */}
+      {/* BETA MODE */}
       <label className="flex items-center gap-3">
         <input
           type="checkbox"
-          checked={data.enabled}
+          checked={data.active}
           onChange={(e) =>
-            setData({
-              ...data,
-              enabled: e.target.checked,
-            })
+            setData({ ...data, active: e.target.checked })
           }
         />
         Enable Beta Mode
-      </label>
-
-      {/* NEW USERS */}
-      <label className="flex items-center gap-3">
-        <input
-          type="checkbox"
-          checked={data.allowNewUsers}
-          onChange={(e) =>
-            setData({
-              ...data,
-              allowNewUsers: e.target.checked,
-            })
-          }
-        />
-        Allow New Users
       </label>
 
       {/* WITHDRAWALS */}
       <label className="flex items-center gap-3">
         <input
           type="checkbox"
-          checked={data.allowWithdrawals}
+          checked={data.showWithdrawals}
+          onChange={(e) =>
+            setData({ ...data, showWithdrawals: e.target.checked })
+          }
+        />
+        Enable Withdrawals
+      </label>
+
+      {/* CONVERSION */}
+      <label className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          checked={data.showConversion}
+          onChange={(e) =>
+            setData({ ...data, showConversion: e.target.checked })
+          }
+        />
+        Enable Conversion
+      </label>
+
+      {/* ADS */}
+      <label className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          checked={data.showAds}
+          onChange={(e) =>
+            setData({ ...data, showAds: e.target.checked })
+          }
+        />
+        Enable Ads
+      </label>
+
+      {/* MAX USERS */}
+      <div>
+        <label className="block text-sm">Max Users</label>
+        <input
+          type="number"
+          value={data.maxUsers || ""}
           onChange={(e) =>
             setData({
               ...data,
-              allowWithdrawals: e.target.checked,
+              maxUsers: Number(e.target.value),
             })
           }
+          className="border px-2 py-1 rounded w-full"
         />
-        Allow Withdrawals
-      </label>
+      </div>
 
-      {/* SAVE BUTTON */}
+      {/* DAILY MINUTES CAP */}
+      <div>
+        <label className="block text-sm">Daily Minutes Cap</label>
+        <input
+          type="number"
+          value={data.dailyMinutesCap || ""}
+          onChange={(e) =>
+            setData({
+              ...data,
+              dailyMinutesCap: Number(e.target.value),
+            })
+          }
+          className="border px-2 py-1 rounded w-full"
+        />
+      </div>
+
+      {/* SAVE */}
       <button
         onClick={save}
         disabled={saving}

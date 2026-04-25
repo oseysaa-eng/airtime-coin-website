@@ -1,26 +1,41 @@
 import React, { createContext, useContext } from "react";
 
-type BetaState = {
+type BetaSettings = {
   active: boolean;
-  conversionEnabled: boolean;
-  withdrawalEnabled: boolean;
+  maxUsers?: number;
+
+  showConversion: boolean;
+  showWithdrawals: boolean;
+  showAds: boolean;
+
+  dailyAdLimit?: number;
+  dailyMinutesCap?: number;
 };
 
-const BetaContext = createContext<BetaState>({
+/* ✅ FULL DEFAULT (SAFE) */
+const defaultBeta: BetaSettings = {
   active: false,
-  conversionEnabled: true,
-  withdrawalEnabled: true,
-});
+  maxUsers: undefined,
+
+  showConversion: true,
+  showWithdrawals: true,
+  showAds: true,
+
+  dailyAdLimit: undefined,
+  dailyMinutesCap: undefined,
+};
+
+const BetaContext = createContext<BetaSettings>(defaultBeta);
 
 export const BetaProvider = ({
   beta,
   children,
 }: {
-  beta: BetaState;
+  beta: BetaSettings;
   children: React.ReactNode;
 }) => {
   return (
-    <BetaContext.Provider value={beta}>
+    <BetaContext.Provider value={{ ...defaultBeta, ...beta }}>
       {children}
     </BetaContext.Provider>
   );
