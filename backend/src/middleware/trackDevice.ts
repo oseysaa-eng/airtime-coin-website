@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import crypto from "crypto";
 
 export const trackDevice = (
   req: any,
@@ -6,24 +7,63 @@ export const trackDevice = (
   next: NextFunction
 ) => {
   try {
-    // ✅ SAFE DEVICE ID (string only)
+    /* ================= DEVICE ID ================= */
+
+    let deviceId: string | null = null;
+
     const rawDeviceId = req.headers["x-device-id"];
-    const deviceId =
-      typeof rawDeviceId === "string" ? rawDeviceId : null;
 
-    // ✅ REAL IP (works behind proxy like Render)
+    if (typeof rawDeviceId === "string") {
+      // 🔒 sanitize (alphanumeric only)
+      deviceId = rawDeviceId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+    }
+
+    /* ================= IP ADDRESS ================= */
+
+    let ip: string | null = null;
+
     const forwarded = req.headers["x-forwarded-for"];
-    const ip =
-      typeof forwarded === "string"
-        ? forwarded.split(",")[0]
-        : req.socket?.remoteAddress || null;
 
-    // ✅ USER AGENT (device info)
-    const userAgent = req.headers["user-agent"] || null;
+    if (typeof forwarded === "string") {
+      ip = forwarded.split(",")[0].trim();
+    } else {
+      ip =
+        req.ip ||
+        req.socket?.remoteAddress ||
+        null;
+    }
 
-    // ✅ ATTACH TO REQUEST
+    /* ================= USER AGENT ================= */
+
+    const userAgent =
+      typeof req.headers["user-agent"] === "string"
+        ? req.headers["user-agent"].slice(0, 200)
+        : null;
+
+    /* ================= FALLBACK FINGERPRINT ================= */
+
+    if (!deviceId) {
+      const fingerprintRaw = `${ip}-${userAgent}`;
+
+      deviceId = crypto
+        .createHash("sha256")
+        .update(fingerprintRaw)
+        .digest("hex")
+        .slice(0, 32);
+    }
+
+    /* ================= HASH DEVICE (PRIVACY SAFE) ================= */
+
+    const deviceHash = crypto
+      .createHash("sha256")
+      .update(deviceId)
+      .digest("hex");
+
+    /* ================= ATTACH ================= */
+
     req.device = {
-      deviceId,
+      deviceId,        // cleaned ID
+      deviceHash,      // 🔥 use this in DB
       ipAddress: ip,
       userAgent,
     };
@@ -31,9 +71,11 @@ export const trackDevice = (
     next();
 
   } catch (err) {
-    // ❗ NEVER BLOCK REQUEST
+    console.error("Device tracking error:", err);
+
     req.device = {
       deviceId: null,
+      deviceHash: null,
       ipAddress: null,
       userAgent: null,
     };
