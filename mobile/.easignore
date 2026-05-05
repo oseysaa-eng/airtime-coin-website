@@ -1,0 +1,31 @@
+node_modules
+.git
+.gitignore
+dist
+build
+web-build
+coverage
+*.log
+*.zip
+*.apk
+*.aab
+
+# Expo / cache
+.expo
+.expo-shared
+.cache
+
+# Local env
+.env
+.env.local
+
+# Android build junk
+android/.gradle
+android/app/build
+
+# iOS (if exists)
+ios/build
+
+# Images/videos not used
+assets/raw
+assets/videos

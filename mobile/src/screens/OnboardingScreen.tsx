@@ -14,30 +14,33 @@ const { width } = Dimensions.get("window");
 export default function OnboardingScreen() {
   const navigation = useNavigation<any>();
   const [step, setStep] = useState(0);
+  const [accepted, setAccepted] = useState(false);
 
   const finishOnboarding = async () => {
+    if (!accepted) return;
+
     await AsyncStorage.setItem("hasOnboarded", "true");
     navigation.replace("Register");
   };
 
   const screens = [
     {
-      title: "Turn Airtime Into Value",
+      title: "Turn Airtime Into Digital Value",
       text:
-        "AirtimeCoin lets you convert unused airtime into real digital value. " +
-        "No stress. No waste. Just value.",
+        "AirtimeCoin allows you to convert eligible airtime usage into ATC, " +
+        "a digital reward within the platform.",
     },
     {
-      title: "Earn, Convert & Withdraw",
+      title: "Earn Responsibly",
       text:
-        "Earn minutes from calls, ads, and surveys. Convert them into ATC and " +
-        "withdraw securely when you’re ready.",
+        "Earn through calls, ads, and surveys. Rewards are subject to system rules, " +
+        "limits, and fraud protection.",
     },
     {
       title: "Secure & Verified",
       text:
-        "To protect your account and withdrawals, KYC verification is required. " +
-        "Your data is encrypted and never shared.",
+        "To protect users and withdrawals, identity verification (KYC) is required. " +
+        "Your data is securely encrypted.",
     },
   ];
 
@@ -62,9 +65,29 @@ export default function OnboardingScreen() {
         <Text style={styles.text}>{screens[step].text}</Text>
       </View>
 
+      {/* Consent (ONLY LAST SCREEN) */}
+      {step === screens.length - 1 && (
+        <TouchableOpacity
+          style={styles.checkboxContainer}
+          onPress={() => setAccepted(!accepted)}
+        >
+          <View
+            style={[
+              styles.checkbox,
+              accepted && styles.checkboxActive,
+            ]}
+          />
+          <Text>
+  I agree to the{" "}
+  <Text onPress={() => navigation.navigate("Terms")}>Terms</Text> &{" "}
+  <Text onPress={() => navigation.navigate("Privacy")}>Privacy Policy</Text>
+</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Actions */}
       <View style={styles.actions}>
-        {step < 2 ? (
+        {step < screens.length - 1 ? (
           <TouchableOpacity
             style={styles.button}
             onPress={() => setStep(step + 1)}
@@ -73,15 +96,24 @@ export default function OnboardingScreen() {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
-            style={styles.button}
+            style={[
+              styles.button,
+              !accepted && styles.disabledButton,
+            ]}
             onPress={finishOnboarding}
+            disabled={!accepted}
           >
-            <Text style={styles.buttonText}>Get Started</Text>
+            <Text style={styles.buttonText}>
+              Get Started
+            </Text>
           </TouchableOpacity>
         )}
 
-        {step < 2 && (
-          <TouchableOpacity onPress={finishOnboarding}>
+       
+        {step < screens.length - 1 && (
+          <TouchableOpacity
+            onPress={() => setStep(screens.length - 1)}
+          >
             <Text style={styles.skip}>Skip</Text>
           </TouchableOpacity>
         )}
@@ -139,6 +171,31 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
 
+  checkboxContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 20,
+  },
+
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderWidth: 1,
+    borderColor: "#0ea5a4",
+    marginRight: 10,
+    borderRadius: 4,
+  },
+
+  checkboxActive: {
+    backgroundColor: "#0ea5a4",
+  },
+
+  checkboxText: {
+    fontSize: 13,
+    color: "#374151",
+    flex: 1,
+  },
+
   actions: {
     marginBottom: 50,
   },
@@ -149,6 +206,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     marginBottom: 14,
+  },
+
+  disabledButton: {
+    backgroundColor: "#94a3b8",
   },
 
   buttonText: {

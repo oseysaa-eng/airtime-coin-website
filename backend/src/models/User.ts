@@ -35,6 +35,7 @@ export interface IUser extends Document {
   lastIP?: string;
   lastUserAgent?: string;
   lastLoginAt?: Date;
+  lastWithdrawalAt: Date;
 
   status: "active" | "suspended" | "banned";
   kycStatus: "not_submitted" | "pending" | "approved" | "rejected";
@@ -97,6 +98,8 @@ const UserSchema = new Schema<IUser>(
     hasPin: { type: Boolean, default: false },
     pinUpdatedAt: { type: Date, default: null },
 
+    
+
 
     streak: {
     current: { type: Number, default: 0 },
@@ -158,7 +161,7 @@ const UserSchema = new Schema<IUser>(
 
     totalEarnings: { type: Number, default: 0 },
     totalMinutes: { type: Number, default: 0 },
-
+  
     /* ================= CALL MINING ================= */
 
     totalCalls: { type: Number, default: 0 },
@@ -200,6 +203,8 @@ const UserSchema = new Schema<IUser>(
     earlyAdopter: { type: Boolean, default: false },
 
     pausedUntil: { type: Date, default: null },
+
+    
 
     role: {
       type: String,

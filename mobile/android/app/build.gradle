@@ -82,6 +82,16 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
+
+  splits {
+    abi {
+      enable true
+      reset()
+      include "armeabi-v7a", "arm64-v8a"
+      universalApk false
+    }
+  }
+
     ndkVersion rootProject.ext.ndkVersion
 
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -105,9 +115,12 @@ android {
             keyPassword 'android'
         }
     }
-    buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
+            buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
         }
         release {
             // Caution! In production, you need to generate your own keystore file.
@@ -130,7 +143,7 @@ android {
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
-}
+
 
 // Apply static values from `gradle.properties` to the `android.packagingOptions`
 // Accepts values in comma delimited lists, example:
@@ -147,7 +160,7 @@ android {
         println "android.packagingOptions.$prop += $options ($options.length)"
         // Ex: android.packagingOptions.pickFirsts += '**/SCCS/**'
         options.each {
-            android.packagingOptions[prop] += it
+          android.packagingOptions[prop] += it
         }
     }
 }
