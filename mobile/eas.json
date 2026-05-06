@@ -22,11 +22,11 @@
       "autoIncrement": true,
       "node": "18.18.0",
       "android": {
-        "buildType": "app-bundle",
-        "gradleCommand": ":app:bundleRelease"
+        "buildType": "app-bundle"
       },
-      "env": {
-        "NODE_ENV": "production"
+      "resourceClass": "medium",
+      "cache": {
+        "key": "v1"
       }
     }
   },
