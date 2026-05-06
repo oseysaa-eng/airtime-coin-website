@@ -4,6 +4,10 @@ node_modules
 dist
 build
 web-build
+
+android
+ios
+
 coverage
 *.log
 *.zip
