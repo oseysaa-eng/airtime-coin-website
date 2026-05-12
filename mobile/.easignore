@@ -1,35 +1,28 @@
 node_modules
 .git
 .gitignore
-dist
-build
-web-build
 
-android
-ios
+.gradle
+android/.gradle
+android/app/build
+ios/build
 
-coverage
+.expo
+.expo-shared
+.cache
+
 *.log
 *.zip
 *.apk
 *.aab
 
-# Expo / cache
-.expo
-.expo-shared
-.cache
+coverage
+dist
+build
+web-build
 
-# Local env
 .env
-.env.local
+.env.*
 
-# Android build junk
-android/.gradle
-android/app/build
-
-# iOS (if exists)
-ios/build
-
-# Images/videos not used
 assets/raw
 assets/videos

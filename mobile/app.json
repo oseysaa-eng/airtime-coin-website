@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "AirtimeCoin",
+    "name": "AirtimeCoin Beta",
     "slug": "ATCApp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,18 +13,19 @@
     },
 
     "android": {
-      "package": "com.airtimecoin.app",
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false,
-      "permissions": [
-        "INTERNET",
-        "ACCESS_NETWORK_STATE"
-      ]
-    },
+  "package": "com.airtimecoin.app",
+  "versionCode": 1,
+  "adaptiveIcon": {
+    "backgroundColor": "#E6F4FE",
+    "foregroundImage": "./assets/images/android-icon-foreground.png"
+  },
+  "edgeToEdgeEnabled": true,
+  "predictiveBackGestureEnabled": false,
+  "permissions": [
+    "INTERNET",
+    "ACCESS_NETWORK_STATE"
+  ]
+},
 
     "web": {
       "output": "static",
@@ -42,12 +43,13 @@
           "backgroundColor": "#0ea5a4"
         }
       ],
-      [
-        "react-native-google-mobile-ads",
-        {
-          "androidAppId": "ca-app-pub-1665828711086363~1162547584"
-        }
-      ],
+  [
+    "react-native-google-mobile-ads",
+    {
+      "androidAppId": "ca-app-pub-1665828711086363~1162547584"
+    }
+  ],
+
       "expo-font",
       "expo-web-browser"
     ],
@@ -62,3 +64,6 @@
     "owner": "oseybray"
   }
 }
+
+
+
