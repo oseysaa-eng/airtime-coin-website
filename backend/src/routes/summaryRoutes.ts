@@ -160,8 +160,8 @@ const rewardAdded = finalStreak?._rewardAdded || 0;
 const balanceATC = (wallet.balanceATC || 0) + rewardAdded;
 
 const balanceCedis = Number((balanceATC * price).toFixed(6));
-const todayATC = Number((todayMinutes * rate).toFixed(6));
-const weeklyATC = weeklyMinutes.map( (m: number) => Number((m * rate).toFixed(6)));
+
+
 
 res.json({
   name: user.name || "User",
@@ -174,11 +174,11 @@ res.json({
   // ✅ EARNINGS
   totalMinutes: wallet.totalMinutes || 0,
   todayMinutes,
-  todayATC,
+
 
   // ✅ WEEKLY
   weeklyMinutes,
-  weeklyATC,
+
 
   // ✅ ECONOMICS
   rate,
