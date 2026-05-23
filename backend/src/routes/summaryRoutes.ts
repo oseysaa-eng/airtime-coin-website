@@ -157,7 +157,7 @@ if (trustScore < 40) trustStatus = "blocked";
 const rate = settings?.economics?.minuteToATCRate ?? 0.0025;
 const price = settings?.economics?.atcToCedisPrice ?? 0.0025;
 const rewardAdded = finalStreak?._rewardAdded || 0;
-const balanceATC = (wallet.balanceATC || 0) + rewardAdded;
+const balanceATC = (wallet.balanceATC || 0);
 
 const balanceCedis = Number((balanceATC * price).toFixed(6));
 
