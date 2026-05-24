@@ -85,27 +85,35 @@ export default function LoginScreen({ navigation }: any) {
   if (!validate()) return;
 
   if (!fingerprint) {
-    Alert.alert("Device Error", "Unable to verify this device");
+    Alert.alert(
+      "Device Error",
+      "Unable to verify this device"
+    );
     return;
   }
+
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, 15000);
 
   try {
     setLoading(true);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000); // ⏱️ 15s timeout
-
     const res = await API.post(
       "/api/auth/login",
       {
-        email: email.trim().toLowerCase(), // ✅ FIXED
+        email: email.trim().toLowerCase(),
         password,
-        fingerprint,
       },
-      { signal: controller.signal }
+      {
+        signal: controller.signal,
+        headers: {
+          "x-device-id": fingerprint,
+        },
+      }
     );
-
-    clearTimeout(timeout);
 
     if (!res.data?.token) {
       throw new Error("Invalid login response");
@@ -118,35 +126,50 @@ export default function LoginScreen({ navigation }: any) {
       ["refreshToken", refreshToken || ""],
       ["userId", user._id],
       ["hasAccount", "true"],
+      ["deviceFingerprint", fingerprint],
     ]);
 
-    /* =============================
-       CONNECT SOCKET SAFELY
-    ============================= */
     try {
-      await connectSocket();
+      await connectSocket(token);
     } catch {
-      console.log("⚠️ Socket failed (non-blocking)");
+      console.log("⚠️ Socket failed");
     }
 
     console.log("✅ Login successful");
 
-    navigation.replace("MainTabs");
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "MainTabs" }],
+    });
 
   } catch (err: any) {
+
     console.log("Login error:", err);
 
     if (err.name === "AbortError") {
-      Alert.alert("Timeout", "Server is taking too long. Try again.");
+      Alert.alert(
+        "Timeout",
+        "Server is taking too long. Try again."
+      );
+
     } else if (!err.response) {
-      Alert.alert("Network Error", "Check your internet connection");
+
+      Alert.alert(
+        "Network Error",
+        "Check your internet connection"
+      );
+
     } else {
+
       Alert.alert(
         "Login Failed",
-        err?.response?.data?.message || "Invalid credentials"
+        err?.response?.data?.message ||
+        "Invalid credentials"
       );
     }
+
   } finally {
+    clearTimeout(timeout);
     setLoading(false);
   }
 };
@@ -154,36 +177,78 @@ export default function LoginScreen({ navigation }: any) {
   /* =============================
      BIOMETRIC LOGIN
   ============================= */
-  const handleBiometricAuth = async () => {
+
+const handleBiometricAuth = async () => {
+  if (loading) return;
   try {
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: "Authenticate",
-      fallbackLabel: "Use password",
-    });
+
+    const result =
+      await LocalAuthentication.authenticateAsync({
+        promptMessage: "Authenticate",
+        fallbackLabel: "Use password",
+      });
 
     if (!result.success) return;
 
-    const token = await AsyncStorage.getItem("userToken");
+    const token =
+      await AsyncStorage.getItem("userToken");
 
     if (!token) {
-      Alert.alert("Session expired", "Please login again");
+      Alert.alert(
+        "Session Expired",
+        "Please login again"
+      );
       return;
     }
 
-    /* OPTIONAL: validate token expiry later */
+
+if (fingerprint) {
+  await AsyncStorage.setItem(
+    "deviceFingerprint",
+    fingerprint
+  );
+}
+    /* ================= VALIDATE TOKEN ================= */
+
+    const res = await API.get(
+      "/api/auth/me",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-device-id": fingerprint || "",
+        },
+      }
+    );
+
+    if (!res.data) {
+      throw new Error("Invalid session");
+    }
+
+    /* ================= SOCKET ================= */
 
     try {
-      await connectSocket();
+      await connectSocket(token);
     } catch {
       console.log("Socket reconnect failed");
     }
 
-    navigation.replace("MainTabs");
+
+    navigation.reset({
+  index: 0,
+  routes: [{ name: "MainTabs" }],
+});
 
   } catch (err) {
+
     console.log("Biometric error:", err);
+
+    Alert.alert(
+      "Authentication Failed",
+      "Please login with password"
+    );
   }
 };
+
 
   return (
     <KeyboardAvoidingView
@@ -202,6 +267,8 @@ export default function LoginScreen({ navigation }: any) {
           <Switch value={darkMode} onValueChange={() => setDarkMode(!darkMode)} />
         </View>
 
+
+
         <Text style={theme.title}>Welcome Back 👋</Text>
         <Text style={theme.subtitle}>
           Login to continue earning with Airtime Coin
@@ -215,18 +282,29 @@ export default function LoginScreen({ navigation }: any) {
           autoCapitalize="none"
           value={email}
           onChangeText={setEmail}
+          keyboardType="email-address"
         />
         {emailError && <Text style={theme.errorText}>{emailError}</Text>}
 
         {/* PASSWORD */}
         <View style={theme.passwordWrapper}>
           <TextInput
-            style={[theme.passwordInput, passwordError && { borderColor: "#ef4444" }]}
-            placeholder="Password"
-            secureTextEntry={!showPassword}
-            value={password}
-            onChangeText={setPassword}
-          />
+          style={[
+            theme.passwordInput,
+            passwordError && {
+              borderColor: "#ef4444",
+            },
+          ]}
+          placeholder="Password"
+          placeholderTextColor={
+            darkMode ? "#64748b" : "#94a3b8"
+          }
+          secureTextEntry={!showPassword}
+          value={password}
+          onChangeText={setPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
 
           <TouchableOpacity
             style={theme.eyeBtn}
@@ -269,7 +347,13 @@ export default function LoginScreen({ navigation }: any) {
 
         {/* REGISTER */}
         <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-          <Text style={{ textAlign: "center" }}>
+          <Text 
+  style={{
+    textAlign: "center",
+    color: darkMode ? "#cbd5e1" : "#334155",
+  }}
+>
+            
             Don't have an account? Register
           </Text>
         </TouchableOpacity>

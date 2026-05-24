@@ -1,73 +1,74 @@
-
 {
-"expo": {
-"name": "AirtimeCoin Beta",
-"slug": "ATCApp",
-"version": "1.0.0",
-"orientation": "portrait",
-"icon": "./assets/images/icon.png",
-"scheme": "atcappexpo",
-"userInterfaceStyle": "automatic",
+  "expo": {
+    "name": "AirtimeCoin Beta",
+    "slug": "ATCApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "atcappexpo",
+    "userInterfaceStyle": "automatic",
 
-"ios": {  
-  "supportsTablet": true  
-},  
+    "ios": {
+      "supportsTablet": true
+    },
 
-"android": {
+    "android": {
+      "package": "com.airtimecoin.app",
+      "versionCode": 1,
 
-"package": "com.airtimecoin.app",
-"versionCode": 1,
-"adaptiveIcon": {
-"backgroundColor": "#E6F4FE",
-"foregroundImage": "./assets/images/android-icon-foreground.png"
-},
-"edgeToEdgeEnabled": true,
-"predictiveBackGestureEnabled": false,
-"permissions": [
-"INTERNET",
-"ACCESS_NETWORK_STATE",
-"READ_PHONE_STATE",
-"READ_CALL_LOG"
-]
-},
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
+      },
 
-"web": {  
-  "output": "static",  
-  "favicon": "./assets/images/icon.png"  
-},  
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
 
-"plugins": [  
-  "expo-router",  
-  [  
-    "expo-splash-screen",  
-    {  
-      "image": "./assets/images/splash-icon.png",  
-      "imageWidth": 200,  
-      "resizeMode": "contain",  
-      "backgroundColor": "#0ea5a4"  
-    }  
-  ],  
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "READ_PHONE_STATE",
+        "READ_CALL_LOG"
+      ]
+    },
 
-  [
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/icon.png"
+    },
 
-"react-native-google-mobile-ads",
-{
-"androidAppid": "ca-app-pub-1665828711086363~1162547584"
-}
-],
-"expo-font",
-"expo-web-browser",
- "expo-secure-store"
-],
+    "plugins": [
+      "expo-router",
 
-"extra": {  
-  "router": {},  
-  "eas": {  
-    "projectId": "afc03f22-f45c-4123-90b8-606d3b6921f8"  
-  }  
-},  
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0ea5a4"
+        }
+      ],
 
-"owner": "oseybray"
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-1665828711086363~1162547584"
+        }
+      ],
 
-}
+      "expo-font",
+      "expo-web-browser",
+      "expo-secure-store"
+    ],
+
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "afc03f22-f45c-4123-90b8-606d3b6921f8"
+      }
+    },
+
+    "owner": "oseybray"
+  }
 }

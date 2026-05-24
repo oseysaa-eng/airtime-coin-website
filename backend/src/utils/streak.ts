@@ -1,45 +1,63 @@
-export const updateStreak = async (user: any, todayMinutes: number) => {
+const normalizeDate = (date: Date) =>
+  date.toISOString().split("T")[0];
+
+export const updateStreak = async (
+  user: any,
+  todayMinutes: number
+) => {
+
   const MIN_REQUIRED = 5;
 
+  if (todayMinutes < MIN_REQUIRED) {
+    return user.streak;
+  }
+
   const now = new Date();
-  const today = new Date(now.toDateString());
+
+  const today = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  );
+
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
 
   const last = user.streak?.lastEarnDate
     ? new Date(user.streak.lastEarnDate)
     : null;
 
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
   let current = user.streak?.current || 0;
   let longest = user.streak?.longest || 0;
 
-  // ❌ did not meet requirement
-  if (todayMinutes < MIN_REQUIRED) {
-    return user.streak;
-  }
+  const todayKey = normalizeDate(today);
+  const yesterdayKey = normalizeDate(yesterday);
 
-  // ✅ first time ever
-  if (!last) {
+  const lastKey = last
+    ? normalizeDate(last)
+    : null;
+
+  // ✅ first streak ever
+  if (!lastKey) {
     current = 1;
   }
 
-  // ✅ same day → do nothing
-  else if (last.toDateString() === today.toDateString()) {
+  // ✅ already counted today
+  else if (lastKey === todayKey) {
     return user.streak;
   }
 
   // ✅ consecutive day
-  else if (last.toDateString() === yesterday.toDateString()) {
+  else if (lastKey === yesterdayKey) {
     current += 1;
   }
 
-  // ❌ missed a day → reset
+  // ❌ missed streak
   else {
     current = 1;
   }
 
-  if (current > longest) longest = current;
+  longest = Math.max(longest, current);
 
   return {
     current,

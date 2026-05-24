@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import crypto from "crypto";
 
 export const trackDevice = (
@@ -7,27 +7,36 @@ export const trackDevice = (
   next: NextFunction
 ) => {
   try {
+
     /* ================= DEVICE ID ================= */
 
     let deviceId: string | null = null;
 
-    const rawDeviceId = req.headers["x-device-id"];
+    const rawDeviceId =
+      req.headers["x-device-id"];
 
-    if (typeof rawDeviceId === "string") {
-      // 🔒 sanitize (alphanumeric only)
-      deviceId = rawDeviceId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+    if (
+      typeof rawDeviceId === "string" &&
+      rawDeviceId.trim().length > 10
+    ) {
+      deviceId = rawDeviceId
+        .replace(/[^a-zA-Z0-9_-]/g, "")
+        .slice(0, 128);
     }
 
-    /* ================= IP ADDRESS ================= */
+    /* ================= IP ================= */
 
-    let ip: string | null = null;
+    let ipAddress = null;
 
-    const forwarded = req.headers["x-forwarded-for"];
+    const forwarded =
+      req.headers["x-forwarded-for"];
 
     if (typeof forwarded === "string") {
-      ip = forwarded.split(",")[0].trim();
+      ipAddress = forwarded
+        .split(",")[0]
+        .trim();
     } else {
-      ip =
+      ipAddress =
         req.ip ||
         req.socket?.remoteAddress ||
         null;
@@ -37,22 +46,30 @@ export const trackDevice = (
 
     const userAgent =
       typeof req.headers["user-agent"] === "string"
-        ? req.headers["user-agent"].slice(0, 200)
-        : null;
+        ? req.headers["user-agent"].slice(0, 255)
+        : "unknown";
 
-    /* ================= FALLBACK FINGERPRINT ================= */
+    /* ================= FALLBACK ================= */
+
+    /*
+      ONLY use fallback if frontend
+      failed to send x-device-id
+    */
 
     if (!deviceId) {
-      const fingerprintRaw = `${ip}-${userAgent}`;
+
+      const fallbackRaw = [
+        userAgent,
+        ipAddress,
+      ].join("|");
 
       deviceId = crypto
         .createHash("sha256")
-        .update(fingerprintRaw)
-        .digest("hex")
-        .slice(0, 32);
+        .update(fallbackRaw)
+        .digest("hex");
     }
 
-    /* ================= HASH DEVICE (PRIVACY SAFE) ================= */
+    /* ================= FINAL HASH ================= */
 
     const deviceHash = crypto
       .createHash("sha256")
@@ -62,16 +79,20 @@ export const trackDevice = (
     /* ================= ATTACH ================= */
 
     req.device = {
-      deviceId,        // cleaned ID
-      deviceHash,      // 🔥 use this in DB
-      ipAddress: ip,
+      deviceId,
+      deviceHash,
+      ipAddress,
       userAgent,
     };
 
     next();
 
   } catch (err) {
-    console.error("Device tracking error:", err);
+
+    console.error(
+      "Device tracking error:",
+      err
+    );
 
     req.device = {
       deviceId: null,

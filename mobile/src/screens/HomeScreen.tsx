@@ -31,11 +31,6 @@ type Tx = {
   amount: number;
   source: string;
   createdAt: string;
-  streak: {
-  current: number;
-  longest: number;
-};
-  
 };
 
   type Dashboard = {
@@ -51,10 +46,12 @@ type Tx = {
   price: number;          // ✅ add
   recentTx: Tx[];
   trustStatus?: "excellent" | "reduced" | "limited" | "blocked";
+  streak: {
+    current: number;
+    longest: number;
+  };
 };
   
-
-
 
 
 
@@ -118,47 +115,61 @@ useSocketEvent("PRICE_UPDATE", handlePriceUpdate);
 
     /* WALLET */
 
-    const handleWalletUpdate = useCallback((data: any) => {
-
-  // 🔥 trigger sync occasionally
-  if (Date.now() - lastUpdateRef.current > 10000) {
-    lastUpdateRef.current = Date.now();
-    fetchDashboard();
-  }
+const handleWalletUpdate = useCallback((data: any) => {
 
   setDashboard((prev: any) => {
     if (!prev) return prev;
 
     return {
       ...prev,
-      balance: data.balance ?? prev.balance,
+
+      balance:
+        typeof data.balance === "number"
+          ? data.balance
+          : prev.balance,
+
       totalMinutes:
-        data.totalMinutes ?? prev.totalMinutes + (data.minutes || 0),
+        typeof data.totalMinutes === "number"
+          ? data.totalMinutes
+          : prev.totalMinutes,
+
       todayMinutes:
-        data.todayMinutes ?? prev.todayMinutes + (data.minutes || 0),
+        typeof data.todayMinutes === "number"
+          ? data.todayMinutes
+          : prev.todayMinutes,
+
+      balanceCedis:
+        typeof data.balanceCedis === "number"
+          ? data.balanceCedis
+          : prev.balanceCedis,
     };
   });
 
-}, [fetchDashboard]);
+}, []);
 
 
     /* MINUTES */
 const handleMinutesCredit = useCallback((data: any) => {
-  const earned = data?.minutes || 0;
-  if (!earned) return;
+  const earned = Number(data?.minutes || 0);
+
+  if (!earned || earned <= 0) return;
 
   if (popupTimeoutRef.current) {
     clearTimeout(popupTimeoutRef.current);
   }
 
-  setRewardPopup((prev) => (prev ? prev + earned : earned));
+  // NEVER stack popup values
+  setRewardPopup(earned);
+
   setIsEarning(true);
 
   popupTimeoutRef.current = setTimeout(() => {
     setRewardPopup(null);
     setIsEarning(false);
   }, 2000);
+
 }, []);
+
 
 useSocketEvent("WALLET_UPDATE", handleWalletUpdate);
 useSocketEvent("MINUTES_CREDIT", handleMinutesCredit);

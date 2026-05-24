@@ -1,46 +1,49 @@
 import Transaction from "../models/Transaction";
 import Wallet from "../models/Wallet";
+import Streak from "../models/Streak";
 import { STREAK_REWARDS } from "../config/streakRewards";
 
-  export const processStreakRewards = async (
-  userId: string,
-  streak: any
+export const processStreakRewards = async (
+  userId: string
 ) => {
-  if (!streak) return streak;
 
-  const claimed = streak.rewardsClaimed || [];
-  streak.rewardsClaimed = claimed;
+  // ALWAYS fetch fresh streak
+  const streak = await Streak.findOne({ userId });
 
-  const current = streak.current;
+  if (!streak) return null;
 
-  const rewardsToGive = STREAK_REWARDS.filter(
-    (r) => r.days === current && !claimed.includes(r.days)
+  const current = streak.current || 0;
+
+  const reward = STREAK_REWARDS.find(
+    (r) =>
+      r.days === current &&
+      !streak.rewardsClaimed.includes(r.days)
   );
 
-  if (rewardsToGive.length === 0) return streak;
+  if (!reward) return streak;
 
-  let totalReward = 0;
+  // MARK CLAIMED FIRST
+  streak.rewardsClaimed.push(reward.days);
 
-  for (const r of rewardsToGive) {
-    totalReward += r.reward;
+  await streak.save();
 
-    await Wallet.updateOne(
-      { userId },
-      { $inc: { balanceATC: r.reward } }
-    );
+  // NOW reward safely
+  await Wallet.updateOne(
+    { userId },
+    { $inc: { balanceATC: reward.reward } }
+  );
 
-    await Transaction.create({
-      userId,
-      type: "BONUS",
-      amount: r.reward,
-      source: "STREAK_REWARD",
-      meta: { streakDays: r.days },
-    });
+  await Transaction.create({
+    userId,
+    type: "BONUS",
+    amount: reward.reward,
+    source: "STREAK_REWARD",
+    meta: {
+      streakDays: reward.days,
+    },
+  });
 
-    streak.rewardsClaimed.push(r.days);
-  }
+  streak._rewardAdded = reward.reward;
 
-  streak._rewardAdded = totalReward; // 🔥 temporary
   return streak;
 };
-

@@ -7,21 +7,18 @@ export async function getDeviceFingerprint() {
 
   const androidId =
     Application.androidId ||
-    Application.getAndroidId?.() ||
     "unknown";
 
   const raw = [
     androidId,
-    Device.modelId || Device.modelName,
+    Device.brand,
+    Device.modelName,
     Device.osVersion,
     Platform.OS,
-    Application.nativeApplicationVersion
   ].join("|");
 
-  const hash = await Crypto.digestStringAsync(
+  return await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
     raw
   );
-
-  return hash;
 }

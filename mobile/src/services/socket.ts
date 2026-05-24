@@ -8,42 +8,82 @@ let socket: Socket | null = null;
 let connecting = false;
 
 /* ================= CONNECT ================= */
-export const connectSocket = async (): Promise<Socket | null> => {
-  if (socket?.connected) return socket;
-  if (connecting) return socket;
+
+
+
+export const connectSocket = async (
+  token?: string
+) => {
+
+  if (socket?.connected) {
+    return socket;
+  }
+
+  if (connecting) {
+    return socket;
+  }
 
   connecting = true;
 
   try {
-    const token = await AsyncStorage.getItem("userToken");
 
-    if (!token) {
-      console.log("⚠️ No token → skip socket");
-      connecting = false;
+    const authToken =
+      token ||
+      await AsyncStorage.getItem("userToken");
+
+    if (!authToken) {
+      console.log("⚠️ No token");
       return null;
+    }
+
+    if (socket) {
+      socket.removeAllListeners();
+      socket.disconnect();
+      socket = null;
     }
 
     console.log("🔌 Initializing socket...");
 
     socket = io(SOCKET_URL, {
-      auth: { token },
+      auth: {
+        token: authToken,
+      },
+
       transports: ["websocket"],
+
       reconnection: true,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
+
+      timeout: 20000,
+
+      forceNew: true,
     });
 
     socket.on("connect", () => {
-      console.log("🟢 Socket connected:", socket?.id);
+      console.log(
+        "🟢 Socket connected:",
+        socket?.id
+      );
     });
 
     socket.on("disconnect", (reason) => {
-      console.log("🔴 Socket disconnected:", reason);
+      console.log(
+        "🔴 Socket disconnected:",
+        reason
+      );
     });
 
     socket.on("connect_error", async (err) => {
-      console.log("❌ Connect error:", err.message);
+
+      console.log(
+        "❌ Connect error:",
+        err.message
+      );
 
       if (err.message === "Unauthorized") {
+
         await AsyncStorage.multiRemove([
           "userToken",
           "refreshToken",
@@ -61,8 +101,14 @@ export const connectSocket = async (): Promise<Socket | null> => {
     return socket;
 
   } catch (err) {
-    console.log("❌ Socket init failed:", err);
+
+    console.log(
+      "❌ Socket init failed:",
+      err
+    );
+
     return null;
+
   } finally {
     connecting = false;
   }

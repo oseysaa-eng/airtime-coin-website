@@ -152,57 +152,95 @@ if (trustScore < 80) trustStatus = "reduced";
 if (trustScore < 60) trustStatus = "limited";
 if (trustScore < 40) trustStatus = "blocked";
 
-    /* ================= RESPONSE ================= */
+
+/* ================= RESPONSE ================= */
 
 const rate = settings?.economics?.minuteToATCRate ?? 0.0025;
-const price = settings?.economics?.atcToCedisPrice ?? 0.0025;
-const rewardAdded = finalStreak?._rewardAdded || 0;
-const balanceATC = (wallet.balanceATC || 0);
 
-const balanceCedis = Number((balanceATC * price).toFixed(6));
+const price =
+  settings?.economics?.atcToCedisPrice ?? 0.0025;
 
+/* ================= IMPORTANT ================= */
+/*
+  DO NOT AUTO-CONVERT MINUTES
+  DO NOT AUTO-ADD STREAK REWARDS
+  DASHBOARD MUST ONLY DISPLAY DATA
+*/
 
+const balanceATC = Number(
+  (wallet.balanceATC || 0).toFixed(6)
+);
+
+const balanceCedis = Number(
+  (balanceATC * price).toFixed(6)
+);
 
 res.json({
   name: user.name || "User",
-  profileImage: user.profileImage || null,
 
-  // ✅ WALLET
+  profileImage:
+    user.profileImage || null,
+
+  /* ================= WALLET ================= */
+
   balance: balanceATC,
+
   balanceCedis,
 
-  // ✅ EARNINGS
-  totalMinutes: wallet.totalMinutes || 0,
+  /* ================= MINUTES ================= */
+
+  totalMinutes:
+    wallet.totalMinutes || 0,
+
   todayMinutes,
 
+  /* ================= WEEKLY ================= */
 
-  // ✅ WEEKLY
   weeklyMinutes,
 
+  /* ================= ECONOMICS ================= */
 
-  // ✅ ECONOMICS
   rate,
+
   price,
 
-streak: {
-  current: finalStreak.current,
-  longest: finalStreak.longest,
-},
+  /* ================= STREAK ================= */
 
-  // ✅ TRUST
+  streak: {
+    current: finalStreak.current || 0,
+
+    longest: finalStreak.longest || 0,
+  },
+
+  /* ================= TRUST ================= */
+
   trustStatus,
+
   trustScore,
 
-  // ✅ OTHER
+  /* ================= TRANSACTIONS ================= */
+
   recentTx,
 
-  emissionMultiplier: emission?.multiplier ?? 1,
-  emissionPhase: emission?.phase ?? 0,
+  /* ================= EMISSION ================= */
+
+  emissionMultiplier:
+    emission?.multiplier ?? 1,
+
+  emissionPhase:
+    emission?.phase ?? 0,
+
+  /* ================= BETA ================= */
 
   beta: {
-    active: settings?.beta?.active ?? false,
-    conversionEnabled: settings?.beta?.showConversion ?? false,
-    withdrawalEnabled: settings?.beta?.showWithdrawals ?? false,
+    active:
+      settings?.beta?.active ?? false,
+
+    conversionEnabled:
+      settings?.beta?.showConversion ?? false,
+
+    withdrawalEnabled:
+      settings?.beta?.showWithdrawals ?? false,
   },
 });
     
