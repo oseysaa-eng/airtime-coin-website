@@ -1,23 +1,24 @@
 import Transaction from "../models/Transaction";
 import Wallet from "../models/Wallet";
-import Streak from "../models/Streak";
+import User from "../models/User";
 import { STREAK_REWARDS } from "../config/streakRewards";
 
 export const processStreakRewards = async (
   userId: string
 ) => {
 
-  // ALWAYS fetch fresh streak
-  const streak = await Streak.findOne({ userId });
+  const user = await User.findById(userId);
 
-  if (!streak) return null;
+  if (!user || !user.streak) return null;
 
-  const current = streak.current || 0;
+  const streak = user.streak;
+
+  const claimed = streak.rewardsClaimed || [];
 
   const reward = STREAK_REWARDS.find(
     (r) =>
-      r.days === current &&
-      !streak.rewardsClaimed.includes(r.days)
+      r.days === streak.current &&
+      !claimed.includes(r.days)
   );
 
   if (!reward) return streak;
@@ -25,12 +26,16 @@ export const processStreakRewards = async (
   // MARK CLAIMED FIRST
   streak.rewardsClaimed.push(reward.days);
 
-  await streak.save();
+  await user.save();
 
-  // NOW reward safely
+  // REWARD USER
   await Wallet.updateOne(
     { userId },
-    { $inc: { balanceATC: reward.reward } }
+    {
+      $inc: {
+        balanceATC: reward.reward,
+      },
+    }
   );
 
   await Transaction.create({
@@ -43,7 +48,8 @@ export const processStreakRewards = async (
     },
   });
 
-  streak._rewardAdded = reward.reward;
-
-  return streak;
+  return {
+    ...streak.toObject(),
+    rewardAdded: reward.reward,
+  };
 };
