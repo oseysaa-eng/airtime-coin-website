@@ -95,7 +95,8 @@ router.post("/", auth, async (req: any, res) => {
       { new: true, upsert: true, session }
     );
 
-    await resetIfNewDay(pool);
+    await resetIfNewDay(pool, session);
+    await resetProfitIfNewDay(systemWallet, session);
 
     if (pool.paused) {
       throw new Error("Pool paused");
@@ -126,14 +127,40 @@ router.post("/", auth, async (req: any, res) => {
     /* ================= CALCULATIONS ================= */
     const userATC = Number((grossATC * (1 - PROFIT_PERCENT)).toFixed(6));
     const profitATC = Number((grossATC * PROFIT_PERCENT).toFixed(6));
+    const round6 = (n:number) => Number(n.toFixed(6));
 
     /* ================= APPLY ================= */
     wallet.totalMinutes -= minutes;
     wallet.balanceATC += userATC;
-    wallet.convertedTodayMinutes += minutes;
+    wallet.balanceATC = round6(
+  wallet.balanceATC + userATC
+);
     wallet.lastConversionAt = new Date();
 
-    await wallet.save({ session });
+ const updatedWallet = await Wallet.findOneAndUpdate(
+  {
+    userId,
+    totalMinutes: { $gte: minutes },
+  },
+  {
+    $inc: {
+      totalMinutes: -minutes,
+      balanceATC: userATC,
+     
+    },
+    $set: {
+      lastConversionAt: new Date(),
+    },
+  },
+  {
+    new: true,
+    session,
+  }
+);
+
+if (!updatedWallet) {
+  throw new Error("Insufficient minutes");
+}
 
     pool.balanceATC -= grossATC;
     pool.spentTodayATC += grossATC;
@@ -176,8 +203,11 @@ router.post("/", auth, async (req: any, res) => {
     );
 
     /* ================= COMMIT ================= */
-    await session.commitTransaction();
-    session.endSession();
+    try {
+  emitAdminEvent(...);
+} catch (e) {
+  console.log("Emit failed");
+}
 
     /* ================= EMIT AFTER SUCCESS ================= */
     emitAdminEvent("ADMIN_ANALYTICS_UPDATE", {
@@ -209,3 +239,4 @@ router.post("/", auth, async (req: any, res) => {
 });
 
 export default router;
+
