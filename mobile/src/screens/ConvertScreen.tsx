@@ -79,7 +79,7 @@ export default function ConvertScreen() {
       setMinutes(0);
 
       emitDashboardUpdate();
-      loadWallet();
+   
 
     } catch (err: any) {
       Alert.alert(
@@ -122,7 +122,7 @@ export default function ConvertScreen() {
           onValueChange={(v) => setMinutes(Math.floor(v[0]))}
           minimumValue={0}
           maximumValue={totalMinutes}
-          step={10}
+          step={minConvert}
           trackStyle={styles.track}
           thumbStyle={styles.thumb}
           minimumTrackTintColor="#0ea5a4"
@@ -146,9 +146,19 @@ export default function ConvertScreen() {
         {loading ? (
           <ActivityIndicator />
         ) : (
-          <Text style={styles.button} onPress={convert}>
-            Convert Now
-          </Text>
+        <TouchableOpacity
+  disabled={loading}
+  activeOpacity={0.8}
+  style={[
+    styles.convertButton,
+    loading && { opacity: 0.6 }
+  ]}
+  onPress={convert}
+>
+  <Text style={styles.convertButtonText}>
+    Convert Now
+  </Text>
+</TouchableOpacity>
         )}
       </View>
     </View>
@@ -223,13 +233,17 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
 
-  button: {
-    backgroundColor: "#0ea5a4",
-    color: "#ffffff",
-    textAlign: "center",
-    paddingVertical: 14,
-    borderRadius: 10,
-    fontSize: 16,
-    fontWeight: "700",
-  },
+  convertButton: {
+  backgroundColor: "#0ea5a4",
+  paddingVertical: 14,
+  borderRadius: 10,
+  alignItems: "center",
+},
+
+convertButtonText: {
+  color: "#ffffff",
+  fontSize: 16,
+  fontWeight: "700",
+},
+
 });

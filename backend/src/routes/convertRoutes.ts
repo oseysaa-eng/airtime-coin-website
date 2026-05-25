@@ -96,7 +96,7 @@ router.post("/", auth, async (req: any, res) => {
     );
 
     await resetIfNewDay(pool, session);
-    await resetProfitIfNewDay(systemWallet, session);
+
 
     if (pool.paused) {
       throw new Error("Pool paused");
@@ -127,15 +127,9 @@ router.post("/", auth, async (req: any, res) => {
     /* ================= CALCULATIONS ================= */
     const userATC = Number((grossATC * (1 - PROFIT_PERCENT)).toFixed(6));
     const profitATC = Number((grossATC * PROFIT_PERCENT).toFixed(6));
-    const round6 = (n:number) => Number(n.toFixed(6));
+
 
     /* ================= APPLY ================= */
-    wallet.totalMinutes -= minutes;
-    wallet.balanceATC += userATC;
-    wallet.balanceATC = round6(
-  wallet.balanceATC + userATC
-);
-    wallet.lastConversionAt = new Date();
 
  const updatedWallet = await Wallet.findOneAndUpdate(
   {
@@ -146,7 +140,7 @@ router.post("/", auth, async (req: any, res) => {
     $inc: {
       totalMinutes: -minutes,
       balanceATC: userATC,
-     
+      convertedTodayMinutes: minutes,
     },
     $set: {
       lastConversionAt: new Date(),
@@ -186,7 +180,7 @@ if (!updatedWallet) {
     );
 
     // 🔥 DAILY RESET FIX
-    await resetProfitIfNewDay(systemWallet);
+    await resetProfitIfNewDay(systemWallet, session);
 
     /* ================= TRANSACTION ================= */
     await Transaction.create(
@@ -202,27 +196,26 @@ if (!updatedWallet) {
       { session }
     );
 
+    await session.commitTransaction();
+session.endSession();
+
     /* ================= COMMIT ================= */
-    try {
-  emitAdminEvent(...);
+try {
+  emitAdminEvent("ADMIN_ANALYTICS_UPDATE", {
+    type: "PROFIT_UPDATE",
+    amount: profitATC,
+  });
 } catch (e) {
   console.log("Emit failed");
 }
-
-    /* ================= EMIT AFTER SUCCESS ================= */
-    emitAdminEvent("ADMIN_ANALYTICS_UPDATE", {
-      type: "PROFIT_UPDATE",
-      amount: profitATC,
-    });
-
-
+  
     return res.json({
       success: true,
       minutesConverted: minutes,
       atcReceived: userATC,
       rate,
       remainingDailyMinutes:
-      maxMinutes - wallet.convertedTodayMinutes,
+      maxMinutes - updatedWallet.convertedTodayMinutes,
     });
 
   } catch (err: any) {
@@ -239,4 +232,3 @@ if (!updatedWallet) {
 });
 
 export default router;
-
